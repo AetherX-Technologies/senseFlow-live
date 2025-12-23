@@ -1,0 +1,27 @@
+﻿{
+  "type": "object",
+  "properties": {
+    "summary": {"type": "array", "items": {"type": "string"}},
+    "summary_live": {"type": "array", "items": {"type": "string"}},
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"text": {"type": "string"}},
+        "required": ["text"],
+        "additionalProperties": false
+      }
+    },
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {"text": {"type": "string"}},
+        "required": ["text"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["summary", "summary_live", "actions", "questions"],
+  "additionalProperties": false
+}
