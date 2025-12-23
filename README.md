@@ -1,4 +1,4 @@
-[//]: # '<div align="left"><img src="docs/images/funasr_logo.jpg" width="400"/></div>'
+[//]: # "<div align="left"><img src="docs/images/funasr_logo.jpg" width="400"/></div>"
 
 ([简体中文](./README_zh.md)|English)
 
@@ -10,15 +10,11 @@ Note: The remaining sections keep the upstream FunASR toolkit documentation.
 
 [//]: # "# FunASR: A Fundamental End-to-End Speech Recognition Toolkit"
 
-[![SVG Banners](https://svg-banners.vercel.app/api?type=origin&text1=FunASR🤠&text2=💖%20A%20Fundamental%20End-to-End%20Speech%20Recognition%20Toolkit&width=800&height=210)](https://github.com/Akshay090/svg-banners)
 
-[![PyPI](https://img.shields.io/pypi/v/funasr)](https://pypi.org/project/funasr/)
 
-<p align="center">
-<a href="https://trendshift.io/repositories/3839" target="_blank"><img src="https://trendshift.io/api/badge/repositories/3839" alt="modelscope%2FFunASR | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-</p>
+![image-20251223203620378](README.assets/image-20251223203620378.png)
 
-<strong>FunASR</strong> hopes to build a bridge between academic research and industrial applications on speech recognition. By supporting the training & finetuning of the industrial-grade speech recognition model, researchers and developers can conduct research and production of speech recognition models more conveniently, and promote the development of speech recognition ecology. ASR for Fun！
+
 
 [**Highlights**](#highlights)
 | [**News**](https://github.com/alibaba-damo-academy/FunASR#whats-new)
@@ -48,7 +44,7 @@ Note: The remaining sections keep the upstream FunASR toolkit documentation.
 - 2024/07/04：[SenseVoice](https://github.com/FunAudioLLM/SenseVoice) is a speech foundation model with multiple speech understanding capabilities, including ASR, LID, SER, and AED.
 
 <details><summary>Full Changelog</summary>
-    
+
 - 2024/07/01: Offline File Transcription Service GPU 1.1 released, optimize BladeDISC model compatibility issues; ref to ([docs](runtime/readme.md))
 - 2024/06/27: Offline File Transcription Service GPU 1.0 released, supporting dynamic batch processing and multi-threading concurrency. In the long audio test set, the single-thread RTF is 0.0076, and multi-threads' speedup is 1200+ (compared to 330+ on CPU); ref to ([docs](runtime/readme.md))
 - 2024/05/15：emotion recognition models are new supported. [emotion2vec+large](https://modelscope.cn/models/iic/emotion2vec_plus_large/summary)，[emotion2vec+base](https://modelscope.cn/models/iic/emotion2vec_plus_base/summary)，[emotion2vec+seed](https://modelscope.cn/models/iic/emotion2vec_plus_seed/summary). currently supports the following categories: 0: angry 1: happy 2: neutral 3: sad 4: unknown.

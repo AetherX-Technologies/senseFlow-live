@@ -1,29 +1,12 @@
-[//]: # '<div align="left"><img src="docs/images/funasr_logo.jpg" width="400"/></div>'
+[//]: # "<div align="left"><img src="docs/images/funasr_logo.jpg" width="400"/></div>"
 
 (简体中文|[English](./README.md))
 
-[![SVG Banners](https://svg-banners.vercel.app/api?type=origin&text1=FunASR🤠&text2=💖%20A%20Fundamental%20End-to-End%20Speech%20Recognition%20Toolkit&width=800&height=210)](https://github.com/Akshay090/svg-banners)
 
-[//]: # "# FunASR: A Fundamental End-to-End Speech Recognition Toolkit"
 
-[![PyPI](https://img.shields.io/pypi/v/funasr)](https://pypi.org/project/funasr/)
+![image-20251223203620378](E:\code\FunASR-main\FunASR-main\senseFlow-live\README_zh.assets\image-20251223203620378.png)
 
-FunASR 希望在语音识别的学术研究和工业应用之间架起一座桥梁。通过发布工业级语音识别模型的训练和微调，研究人员和开发人员可以更方便地进行语音识别模型的研究和生产，并推动语音识别生态的发展。让语音识别更有趣！
 
-<div align="center">
-<h4>
- <a href="#核心功能"> 核心功能 </a>
-｜<a href="#最新动态"> 最新动态 </a>
-｜<a href="#安装教程"> 安装 </a>
-｜<a href="#快速开始"> 快速开始 </a>
-｜<a href="https://github.com/alibaba-damo-academy/FunASR/blob/main/docs/tutorial/README_zh.md"> 教程文档 </a>
-｜<a href="#模型仓库"> 模型仓库 </a>
-｜<a href="#服务部署"> 服务部署 </a>
-｜<a href="#联系我们"> 联系我们 </a>
-</h4>
-</div>
-
-<a name="核心功能"></a>
 
 ## 核心功能
 
@@ -40,7 +23,7 @@ FunASR 希望在语音识别的学术研究和工业应用之间架起一座桥�
 - 2024/09/26: 中文离线文件转写服务 4.6、英文离线文件转写服务 1.7、中文实时语音听写服务 1.11 发布，修复 ONNX 内存泄漏、支持 SensevoiceSmall onnx 模型；中文离线文件转写服务 GPU 2.0 发布，修复显存泄漏; 详细信息参阅([部署文档](runtime/readme_cn.md))
 - 2024/09/25：新增语音唤醒模型，支持[fsmn_kws](https://modelscope.cn/models/iic/speech_sanm_kws_phone-xiaoyun-commands-online), [fsmn_kws_mt](https://modelscope.cn/models/iic/speech_sanm_kws_phone-xiaoyun-commands-online), [sanm_kws](https://modelscope.cn/models/iic/speech_sanm_kws_phone-xiaoyun-commands-offline), [sanm_kws_streaming](https://modelscope.cn/models/iic/speech_sanm_kws_phone-xiaoyun-commands-online) 4 个模型的微调和推理。
 - 2024/07/04：[SenseVoice](https://github.com/FunAudioLLM/SenseVoice) 是一个基础语音理解模型，具备多种语音理解能力，涵盖了自动语音识别（ASR）、语言识别（LID）、情感识别（SER）以及音频事件检测（AED）。
- 
+
 <details><summary>展开日志</summary>
 
 - 2024/07/01：中文离线文件转写服务 GPU 版本 1.1 发布，优化 bladedisc 模型兼容性问题；详细信息参阅([部署文档](runtime/readme_cn.md))
