@@ -5,6 +5,7 @@ Uses OpenAI-compatible API
 """
 
 import json
+import time
 import asyncio
 import os
 import sys
@@ -436,6 +437,8 @@ class InsightGenerator:
         self._summary_interval = 500  # chars between summaries
         self._last_summary_index = 0
         self._last_insights: Dict[str, Any] = {"summary": [], "summary_live": [], "actions": [], "questions": []}
+        self._summary_interval_sec: Optional[int] = None
+        self._last_summary_time = 0.0
 
     def add_text(self, text: str):
         """Add finalized text to transcript"""
@@ -449,7 +452,22 @@ class InsightGenerator:
     def should_generate_summary(self) -> bool:
         """Check if we should generate a new summary"""
         current_length = len(self.full_transcript)
+        if self._summary_interval_sec:
+            now = time.time()
+            if (now - self._last_summary_time) >= self._summary_interval_sec:
+                return (current_length - self._last_summary_length) > 0
+            return False
         return (current_length - self._last_summary_length) >= self._summary_interval
+
+    def set_summary_interval(self, seconds: Optional[int]) -> None:
+        if seconds is None:
+            self._summary_interval_sec = None
+            return
+        try:
+            value = int(seconds)
+        except (TypeError, ValueError):
+            return
+        self._summary_interval_sec = value if value > 0 else None
 
     async def generate_insights(self) -> Optional[Dict[str, Any]]:
         """Generate insights if enough new content"""
@@ -466,6 +484,7 @@ class InsightGenerator:
         self._last_summary_length = len(transcript)
         self._last_summary_index = len(self._transcript_parts)
         self._last_insights = result
+        self._last_summary_time = time.time()
         return result
 
     async def answer(self, question: str) -> str:
@@ -478,3 +497,4 @@ class InsightGenerator:
         self._last_summary_length = 0
         self._last_summary_index = 0
         self._last_insights = {"summary": [], "summary_live": [], "actions": [], "questions": []}
+        self._last_summary_time = 0.0

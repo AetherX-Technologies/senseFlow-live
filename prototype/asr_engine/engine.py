@@ -38,6 +38,7 @@ class ASRConfig:
     asr_chunk_size: List[int] = None  # [0, 10, 5] -> 600ms
     encoder_chunk_look_back: int = 4
     decoder_chunk_look_back: int = 1
+    streaming_enabled: bool = True
 
     # VAD settings
     vad_chunk_size_ms: int = 200
@@ -118,7 +119,8 @@ class ASREngine:
         self._punc_cache = {}
         self._is_initialized = False
         self._punc_lock = threading.Lock()
-        self._final_queue: "queue.Queue[Optional[Tuple[str, np.ndarray, float, float, str]]]" = queue.Queue(
+        self._session_token = 0
+        self._final_queue: "queue.Queue[Optional[Tuple[int, str, np.ndarray, float, float, str]]]" = queue.Queue(
             maxsize=self.config.final_decode_queue_size
         )
         self._final_thread: Optional[threading.Thread] = None
@@ -238,6 +240,19 @@ class ASREngine:
         if self._vad_processor:
             self._vad_processor.reset()
 
+    def new_session(self) -> str:
+        """Generate a new session id."""
+        self._session_token += 1
+        return self.events.new_session_id()
+
+    def set_streaming_enabled(self, enabled: bool) -> None:
+        """Toggle streaming partials on/off."""
+        self.config.streaming_enabled = bool(enabled)
+        self._asr_cache = {}
+        self._asr_buffer = np.array([], dtype=np.float32)
+        self._pending_text_parts = []
+        self._segment_text_parts = []
+
     # === Processing ===
 
     def feed_audio(self, audio_chunk: np.ndarray):
@@ -263,8 +278,9 @@ class ASREngine:
         This prevents word dropping at speech start/end.
         """
         # === 1. Always feed audio to ASR (no gating) ===
-        self._asr_buffer = np.concatenate([self._asr_buffer, audio_chunk])
-        self._process_asr_buffer()
+        if self.config.streaming_enabled:
+            self._asr_buffer = np.concatenate([self._asr_buffer, audio_chunk])
+            self._process_asr_buffer()
 
         # === 2. VAD runs in parallel for segmentation only ===
         self._vad_buffer = np.concatenate([self._vad_buffer, audio_chunk])
@@ -304,8 +320,9 @@ class ASREngine:
         if self._current_segment_id is None:
             self._start_segment()
 
-        self._asr_buffer = np.concatenate([self._asr_buffer, audio_chunk])
-        self._process_asr_buffer()
+        if self.config.streaming_enabled:
+            self._asr_buffer = np.concatenate([self._asr_buffer, audio_chunk])
+            self._process_asr_buffer()
 
     def _process_asr_buffer(self):
         """Process ASR buffer when enough data available"""
@@ -398,7 +415,7 @@ class ASREngine:
             if len(segment_audio) >= int(self.config.final_decode_min_ms * self.config.sample_rate / 1000):
                 try:
                     self._final_queue.put_nowait(
-                        (segment_id, segment_audio, self._segment_start_time, end_time, fallback_text)
+                        (self._session_token, segment_id, segment_audio, self._segment_start_time, end_time, fallback_text)
                     )
                 except queue.Full:
                     self._emit_fallback_final(segment_id, self._segment_start_time, end_time, fallback_text)
@@ -501,7 +518,10 @@ class ASREngine:
                 continue
             if item is None:
                 break
-            segment_id, audio, start_time, end_time, fallback_text = item
+            session_token, segment_id, audio, start_time, end_time, fallback_text = item
+            if session_token != self._session_token:
+                self._final_queue.task_done()
+                continue
             try:
                 text = self._run_final_decode(audio)
                 fallback_clean = fallback_text.strip()

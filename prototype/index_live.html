@@ -31,6 +31,13 @@
         .status-pill.listening span:last-child { color: #2196f3; }
         .status-pill.listening .pulse-dot { background: #2196f3; }
 
+        .status-pill.paused {
+            background: rgba(245, 158, 11, 0.2);
+            border-color: rgba(245, 158, 11, 0.4);
+        }
+        .status-pill.paused span:last-child { color: #f59e0b; }
+        .status-pill.paused .pulse-dot { background: #f59e0b; animation: none; }
+
         .timeline-item .text.draft {
             color: rgba(255, 255, 255, 0.6);
             font-style: italic;
@@ -70,6 +77,14 @@
                     <i class="ph-fill ph-waveform"></i>
                     <span>SenseFlow AI</span>
                 </div>
+                <button class="text-btn new-session-btn" id="new-session-btn" title="新建会话">
+                    <i class="ph ph-plus-circle"></i>
+                    <span>新建</span>
+                </button>
+                <button class="text-btn pause-btn" id="pause-btn" title="暂停录音">
+                    <i class="ph ph-pause-circle"></i>
+                    <span>暂停</span>
+                </button>
                 <div class="status-pill connecting">
                     <span class="pulse-dot"></span>
                     <span>连接中...</span>
@@ -79,8 +94,8 @@
                 <span class="session-timer">00:00:00</span>
             </div>
             <div class="header-right">
-                <button class="icon-btn" title="Settings"><i class="ph ph-gear"></i></button>
-                <button class="icon-btn" title="Privacy"><i class="ph ph-shield-check"></i></button>
+                <button class="icon-btn" id="settings-btn" title="Settings"><i class="ph ph-gear"></i></button>
+                <button class="icon-btn" id="download-notes-btn" title="Export Notes"><i class="ph ph-download-simple"></i></button>
                 <div class="user-avatar">
                    <i class="ph ph-user"></i>
                 </div>
@@ -89,6 +104,17 @@
 
         <!-- Main Content Grid -->
         <main class="main-grid">
+            <!-- Left Panel: History -->
+            <section class="panel history-panel">
+                <div class="panel-header sticky-header">
+                    <h2>历史记录</h2>
+                    <span class="history-count" id="history-count">0</span>
+                </div>
+                <div class="history-content" id="history-list">
+                    <div class="history-empty">暂无历史记录</div>
+                </div>
+            </section>
+
             <!-- Left Panel: Realtime Subtitles -->
             <section class="panel timeline-panel">
                 <div class="panel-header sticky-header">
@@ -119,7 +145,7 @@
 
                 <div class="insights-scroll-content">
                     <!-- Summary Card (Overall) -->
-                    <div class="card summary-card glass-card">
+                    <div class="card summary-card glass-card" id="summary-live-card">
                         <div class="card-title"><i class="ph ph-sparkle"></i> 整体摘要</div>
                         <ul class="summary-list" id="summary-list">
                             <li>暂无内容...</li>
@@ -164,6 +190,182 @@
             </section>
         </main>
     </div>
+
+    <div class="settings-overlay" id="settings-overlay"></div>
+    <aside class="settings-drawer" id="settings-drawer" aria-hidden="true">
+        <div class="drawer-header">
+            <div class="drawer-title">
+                <h2>设置</h2>
+                <div class="drawer-subtitle">
+                    <span>实时生效</span>
+                    <span class="drawer-status" id="settings-status">未同步</span>
+                </div>
+            </div>
+            <button class="icon-btn" id="settings-close-btn" title="Close"><i class="ph ph-x"></i></button>
+        </div>
+        <div class="drawer-content">
+            <section class="settings-section">
+                <h3>音频输入</h3>
+                <div class="setting-item">
+                    <div class="setting-label">麦克风选择</div>
+                    <div class="setting-control">
+                        <select id="setting-mic"></select>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">输入增益</div>
+                    <div class="setting-control range">
+                        <input type="range" id="setting-gain" min="0.5" max="2" step="0.05">
+                        <span class="range-value" id="setting-gain-value">1.00x</span>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">噪声门</div>
+                    <div class="setting-control range">
+                        <input type="range" id="setting-noise-gate" min="0" max="1" step="0.05">
+                        <span class="range-value" id="setting-noise-gate-value">0.00</span>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">VAD 灵敏度</div>
+                    <div class="setting-control range">
+                        <input type="range" id="setting-vad-sens" min="0" max="1" step="0.05">
+                        <span class="range-value" id="setting-vad-sens-value">0.50</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="settings-section">
+                <h3>转写策略</h3>
+                <div class="setting-item">
+                    <div class="setting-label">标点开关</div>
+                    <label class="toggle">
+                        <input type="checkbox" id="setting-punctuation">
+                        <span class="toggle-track"></span>
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">段落合并策略</div>
+                    <div class="setting-control">
+                        <select id="setting-merge-strategy">
+                            <option value="silence">按静音间隔</option>
+                            <option value="time">按时间窗口</option>
+                            <option value="manual">手动合并</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">实时/离线模型</div>
+                    <div class="setting-control">
+                        <select id="setting-model-mode">
+                            <option value="realtime">实时模型</option>
+                            <option value="offline">离线模型</option>
+                        </select>
+                    </div>
+                </div>
+            </section>
+
+            <section class="settings-section">
+                <h3>摘要与问答</h3>
+                <div class="setting-item">
+                    <div class="setting-label">摘要频率</div>
+                    <div class="setting-control">
+                        <select id="setting-summary-interval">
+                            <option value="60">每 1 分钟</option>
+                            <option value="180">每 3 分钟</option>
+                            <option value="300">每 5 分钟</option>
+                            <option value="600">每 10 分钟</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">实时摘要开关</div>
+                    <label class="toggle">
+                        <input type="checkbox" id="setting-summary-live">
+                        <span class="toggle-track"></span>
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">LLM 开关</div>
+                    <label class="toggle">
+                        <input type="checkbox" id="setting-llm-enabled">
+                        <span class="toggle-track"></span>
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">模型选择</div>
+                    <div class="setting-control">
+                        <select id="setting-llm-model">
+                            <option value="claude-haiku-4-5-20251001">claude-haiku-4-5-20251001</option>
+                            <option value="gpt-4o-mini">gpt-4o-mini</option>
+                            <option value="qwen2.5-7b">qwen2.5-7b</option>
+                            <option value="llama-3.1-8b">llama-3.1-8b</option>
+                        </select>
+                    </div>
+                </div>
+            </section>
+
+            <section class="settings-section">
+                <h3>展示与导出</h3>
+                <div class="setting-item">
+                    <div class="setting-label">自动滚动</div>
+                    <label class="toggle">
+                        <input type="checkbox" id="setting-auto-scroll">
+                        <span class="toggle-track"></span>
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">时间戳显示</div>
+                    <label class="toggle">
+                        <input type="checkbox" id="setting-show-timestamps">
+                        <span class="toggle-track"></span>
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">导出格式</div>
+                    <div class="setting-control">
+                        <select id="setting-export-format">
+                            <option value="markdown">Markdown</option>
+                            <option value="json">JSON</option>
+                            <option value="text">纯文本</option>
+                        </select>
+                    </div>
+                </div>
+            </section>
+
+            <section class="settings-section">
+                <h3>存储</h3>
+                <div class="setting-item">
+                    <div class="setting-label">写入 Mongo</div>
+                    <label class="toggle">
+                        <input type="checkbox" id="setting-mongo-enabled">
+                        <span class="toggle-track"></span>
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">最大保留天数</div>
+                    <div class="setting-control">
+                        <input type="number" id="setting-retention-days" min="0" step="1">
+                        <span class="input-suffix">天</span>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">最大保留大小</div>
+                    <div class="setting-control">
+                        <input type="number" id="setting-max-size" min="0" step="128">
+                        <span class="input-suffix">MB</span>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-label">自动清理</div>
+                    <label class="toggle">
+                        <input type="checkbox" id="setting-auto-cleanup">
+                        <span class="toggle-track"></span>
+                    </label>
+                </div>
+            </section>
+        </div>
+    </aside>
 
     <script src="app_live.js"></script>
 </body>

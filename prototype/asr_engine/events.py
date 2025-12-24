@@ -60,6 +60,11 @@ class EventEmitter:
     def session_id(self) -> str:
         return self._session_id
 
+    def new_session_id(self) -> str:
+        """Generate a new session id."""
+        self._session_id = str(uuid.uuid4())[:8]
+        return self._session_id
+
     def on(self, event_type: EventType, callback: Callable[[ASREvent], None]):
         """Register event listener"""
         if event_type not in self._listeners:

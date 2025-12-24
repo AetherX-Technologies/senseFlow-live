@@ -1,0 +1,7 @@
+E:\code\FunASR-main\FunASR-main\prototype\ws_server.py:32: DeprecationWarning: websockets.server.serve is deprecated
+  from websockets.server import serve
+WARNING:root:trust_remote_code: False
+WARNING:root:trust_remote_code: False
+WARNING:root:trust_remote_code: False
+WARNING:root:trust_remote_code: False
+[90mAudio: input overflow[0m
