@@ -5,6 +5,7 @@ Uses OpenAI-compatible API
 """
 
 import json
+import copy
 import time
 import asyncio
 import os
@@ -331,9 +332,16 @@ class LLMClient:
             print(f"[LLM] Error ({type(e).__name__}): {e}")
             return None
 
-    async def generate_summary(self, transcript: str, previous: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def generate_summary(
+        self,
+        transcript: str,
+        previous: Optional[Dict[str, Any]] = None,
+        force: bool = False
+    ) -> Dict[str, Any]:
         """Generate meeting summary from transcript"""
-        if len(transcript) < 50:
+        if not transcript.strip():
+            return {"summary": [], "summary_live": [], "actions": [], "questions": []}
+        if len(transcript) < 50 and not force:
             return {"summary": [], "summary_live": [], "actions": [], "questions": []}
 
         previous_payload = self._normalize_summary_payload(previous)
@@ -469,9 +477,9 @@ class InsightGenerator:
             return
         self._summary_interval_sec = value if value > 0 else None
 
-    async def generate_insights(self) -> Optional[Dict[str, Any]]:
+    async def generate_insights(self, force: bool = False) -> Optional[Dict[str, Any]]:
         """Generate insights if enough new content"""
-        if not self.should_generate_summary():
+        if not force and not self.should_generate_summary():
             return None
 
         transcript = self.full_transcript
@@ -480,7 +488,7 @@ class InsightGenerator:
         if not new_text:
             return None
 
-        result = await self.llm.generate_summary(new_text, previous=self._last_insights)
+        result = await self.llm.generate_summary(new_text, previous=self._last_insights, force=force)
         self._last_summary_length = len(transcript)
         self._last_summary_index = len(self._transcript_parts)
         self._last_insights = result
@@ -498,3 +506,7 @@ class InsightGenerator:
         self._last_summary_index = 0
         self._last_insights = {"summary": [], "summary_live": [], "actions": [], "questions": []}
         self._last_summary_time = 0.0
+
+    def current_insights(self) -> Dict[str, Any]:
+        """Return a snapshot of latest insights."""
+        return copy.deepcopy(self._last_insights)

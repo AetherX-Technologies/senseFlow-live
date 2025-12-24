@@ -134,6 +134,31 @@ class MongoLogger:
             })
         return sessions
 
+    def list_sessions_missing_insights(self, limit: int = 5) -> List[str]:
+        pipeline = [
+            {
+                "$group": {
+                    "_id": "$session_id",
+                    "has_final": {
+                        "$max": {"$cond": [{"$eq": ["$event_type", "asr.final"]}, 1, 0]}
+                    },
+                    "has_insights": {
+                        "$max": {"$cond": [{"$eq": ["$event_type", "insights.update"]}, 1, 0]}
+                    },
+                    "last_at": {"$max": "$created_at"},
+                }
+            },
+            {"$match": {"has_final": 1, "has_insights": 0}},
+            {"$sort": {"last_at": -1}},
+            {"$limit": int(limit)},
+        ]
+        missing: List[str] = []
+        for doc in self._events.aggregate(pipeline):
+            session_id = doc.get("_id")
+            if session_id:
+                missing.append(session_id)
+        return missing
+
     def get_session_data(self, session_id: str) -> Dict[str, Any]:
         transcript_docs = list(
             self._events.find(
@@ -307,6 +332,10 @@ class ASRWebSocketServer:
         self.audio_device = None
         self._cleanup_task = None
         self.audio_paused = False
+        self._repair_interval_sec = int(os.getenv("INSIGHTS_REPAIR_INTERVAL_SEC", "300"))
+        self._repair_limit = int(os.getenv("INSIGHTS_REPAIR_LIMIT", "2"))
+        self._repair_task = None
+        self._repair_lock: Optional[asyncio.Lock] = None
 
     async def broadcast(self, message: dict):
         """Send message to all connected clients"""
@@ -316,6 +345,17 @@ class ASRWebSocketServer:
         await asyncio.gather(
             *[client.send(msg_str) for client in self.clients],
             return_exceptions=True
+        )
+
+    @staticmethod
+    def _has_insights(insights: Optional[Dict[str, Any]]) -> bool:
+        if not insights:
+            return False
+        return bool(
+            insights.get("summary")
+            or insights.get("summary_live")
+            or insights.get("actions")
+            or insights.get("questions")
         )
 
     def _on_event(self, event: ASREvent):
@@ -353,14 +393,14 @@ class ASRWebSocketServer:
                 if self.llm_enabled and self.insights.should_generate_summary():
                     asyncio.create_task(self._generate_and_send_insights())
 
-    async def _generate_and_send_insights(self):
+    async def _generate_and_send_insights(self, force: bool = False):
         """Generate insights and send to clients"""
         try:
             if not self.llm_enabled:
                 return
             print(f"{CYAN}[LLM]{RESET} Generating insights...")
             session_id = self.engine.session_id
-            insights = await self.insights.generate_insights()
+            insights = await self.insights.generate_insights(force=force)
 
             summary_live = insights.get("summary_live", []) if insights else []
             if insights and (insights.get("summary") or summary_live or insights.get("actions") or insights.get("questions")):
@@ -443,6 +483,12 @@ class ASRWebSocketServer:
                 data = await asyncio.to_thread(self.mongo.get_session_data, session_id)
             except Exception as e:
                 print(f"{YELLOW}[Mongo]{RESET} Load error: {e}")
+        if self.engine and session_id == self.engine.session_id:
+            current = self.insights.current_insights() if self.insights else {}
+            if self._has_insights(current) and not self._has_insights(data.get("insights")):
+                data["insights"] = current
+                if self.mongo:
+                    self.mongo.log_event(session_id, "insights.update", current)
 
         message = {
             "type": "history.session",
@@ -468,6 +514,52 @@ class ASRWebSocketServer:
         while self.running:
             await asyncio.sleep(300)
             await self._run_cleanup()
+
+    async def _repair_missing_insights(self):
+        if not self.mongo or not self.llm_enabled:
+            return
+        if self._repair_lock is None:
+            self._repair_lock = asyncio.Lock()
+        if self._repair_lock.locked():
+            return
+        async with self._repair_lock:
+            try:
+                missing = await asyncio.to_thread(
+                    self.mongo.list_sessions_missing_insights,
+                    self._repair_limit
+                )
+            except Exception as e:
+                print(f"{YELLOW}[Mongo]{RESET} Repair list error: {e}")
+                return
+            if not missing:
+                return
+            for session_id in missing:
+                if self.engine and session_id == self.engine.session_id:
+                    continue
+                try:
+                    data = await asyncio.to_thread(self.mongo.get_session_data, session_id)
+                except Exception as e:
+                    print(f"{YELLOW}[Mongo]{RESET} Repair load error: {e}")
+                    continue
+                transcript_items = data.get("transcript", [])
+                transcript = " ".join(
+                    item.get("text", "") for item in transcript_items if item.get("text")
+                ).strip()
+                if not transcript:
+                    continue
+                try:
+                    insights = await self.llm.generate_summary(transcript, previous=None, force=True)
+                except Exception as e:
+                    print(f"{YELLOW}[LLM]{RESET} Repair failed for {session_id}: {e}")
+                    continue
+                if not self._has_insights(insights):
+                    continue
+                self.mongo.log_event(session_id, "insights.update", insights)
+
+    async def _repair_loop(self):
+        while self.running:
+            await asyncio.sleep(self._repair_interval_sec)
+            await self._repair_missing_insights()
 
     def _merge_settings(self, base: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
         merged = dict(base)
@@ -740,6 +832,13 @@ class ASRWebSocketServer:
             "type": "audio.paused",
             "payload": {"paused": self.audio_paused}
         }, ensure_ascii=False))
+        current_insights = self.insights.current_insights() if self.insights else {}
+        if self._has_insights(current_insights):
+            await websocket.send(json.dumps({
+                "type": "insights.update",
+                "session_id": self.engine.session_id,
+                "payload": current_insights
+            }, ensure_ascii=False))
 
         try:
             async for message in websocket:
@@ -856,6 +955,7 @@ class ASRWebSocketServer:
 
                     elif cmd == "audio.pause":
                         requested = data.get("paused")
+                        was_paused = self.audio_paused
                         if requested is None:
                             requested = not self.audio_paused
                         try:
@@ -866,6 +966,8 @@ class ASRWebSocketServer:
                             "type": "audio.paused",
                             "payload": {"paused": self.audio_paused}
                         })
+                        if (not was_paused) and self.audio_paused and self.llm_enabled:
+                            asyncio.create_task(self._generate_and_send_insights(force=True))
 
                 except json.JSONDecodeError:
                     pass
@@ -926,6 +1028,8 @@ class ASRWebSocketServer:
         self.running = True
         self._loop = asyncio.get_running_loop()
         self._cleanup_task = asyncio.create_task(self._cleanup_loop())
+        if self.mongo and self._repair_interval_sec > 0:
+            self._repair_task = asyncio.create_task(self._repair_loop())
 
         print(f"\n{'-' * 60}")
         print(f"WebSocket: ws://{self.host}:{self.port}")
@@ -951,6 +1055,8 @@ class ASRWebSocketServer:
             self.engine.finalize()
         if self._cleanup_task:
             self._cleanup_task.cancel()
+        if self._repair_task:
+            self._repair_task.cancel()
         self._stop_audio_stream()
 
 
