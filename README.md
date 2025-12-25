@@ -6,11 +6,15 @@ This README focuses only on the live prototype under `prototype/`. Other folders
 
 
 
-![image-20251225162330278](README.assets/image-20251225162330278.png)
+![image-20251225165653954](README.assets/image-20251225165653954.png)
 
 
 
-![image-20251225162358806](README.assets/image-20251225162358806.png)
+![image-20251225165714630](README.assets/image-20251225165714630.png)
+
+
+
+![image-20251225165731858](README.assets/image-20251225165731858.png)
 
 
 

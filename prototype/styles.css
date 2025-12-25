@@ -860,6 +860,7 @@ body.hide-timestamps .timeline-item {
     font-size: 0.9rem;
     line-height: 1.5;
     animation: slideUp 0.3s ease forwards;
+    word-break: break-word;
 }
 
 @keyframes slideUp {
@@ -879,6 +880,56 @@ body.hide-timestamps .timeline-item {
     background: rgba(255, 255, 255, 0.05);
     color: var(--text-primary);
     border-bottom-left-radius: 2px;
+}
+
+.qa-msg p {
+    margin: 0 0 6px;
+}
+
+.qa-msg p:last-child {
+    margin-bottom: 0;
+}
+
+.qa-msg ul,
+.qa-msg ol {
+    margin: 6px 0;
+    padding-left: 18px;
+}
+
+.qa-msg li {
+    margin: 2px 0;
+}
+
+.qa-msg code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    background: rgba(255, 255, 255, 0.08);
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+
+.qa-msg pre {
+    margin: 6px 0;
+    padding: 8px 10px;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 8px;
+    overflow-x: auto;
+}
+
+.qa-msg pre code {
+    background: transparent;
+    padding: 0;
+}
+
+.qa-msg blockquote {
+    margin: 6px 0;
+    padding-left: 10px;
+    border-left: 2px solid var(--glass-border);
+    color: var(--text-secondary);
+}
+
+.qa-msg a {
+    color: var(--accent-secondary);
+    text-decoration: underline;
 }
 
 .citation {

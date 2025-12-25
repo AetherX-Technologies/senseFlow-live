@@ -291,6 +291,24 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function escapeHtml(text) {
+        return String(text || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function renderMarkdown(text) {
+        const content = String(text || '');
+        if (window.marked && window.DOMPurify) {
+            const raw = window.marked.parse(content, { breaks: true });
+            return window.DOMPurify.sanitize(raw, { USE_PROFILES: { html: true } });
+        }
+        return escapeHtml(content).replace(/\n/g, '<br>');
+    }
+
     function listToMarkdown(items, renderItem) {
         if (!items || items.length === 0) {
             return ['- 暂无内容'];
@@ -878,7 +896,11 @@ document.addEventListener('DOMContentLoaded', () => {
         session.qaLog.forEach(entry => {
             const div = document.createElement('div');
             div.className = `qa-msg ${entry.role === 'user' ? 'user' : 'ai'}`;
-            div.textContent = entry.text;
+            if (entry.role === 'ai') {
+                div.innerHTML = renderMarkdown(entry.text);
+            } else {
+                div.textContent = entry.text;
+            }
             qaHistory.appendChild(div);
         });
         qaHistory.scrollTop = qaHistory.scrollHeight;
@@ -906,7 +928,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function appendQABubble(text, type) {
         const div = document.createElement('div');
         div.className = `qa-msg ${type}`;
-        div.textContent = text;
+        if (type.includes('ai')) {
+            div.innerHTML = renderMarkdown(text);
+        } else {
+            div.textContent = text;
+        }
         qaHistory.appendChild(div);
         qaHistory.scrollTop = qaHistory.scrollHeight;
     }

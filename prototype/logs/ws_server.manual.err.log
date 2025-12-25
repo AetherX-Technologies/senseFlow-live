@@ -34,3 +34,4 @@ Traceback (most recent call last):
   File "e:\code/FunASR-main/FunASR-main/prototype\asr_engine\llm_client.py", line 259, in _generate_summary_with_claude_cli
     raise ValueError(f"[LLM] Claude CLI returned invalid JSON: {raw[:200]}")
 ValueError: [LLM] Claude CLI returned invalid JSON: {"type":"result","subtype":"error_max_structured_output_retries","duration_ms":89051,"duration_api_ms":119195,"is_error":false,"num_turns":8,"session_id":"9d7c54fa-0ae4-4226-a451-6cd1bdbf32dc","total_
+[90mAudio: input overflow[0m
