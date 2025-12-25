@@ -6,15 +6,15 @@ This README focuses only on the live prototype under `prototype/`. Other folders
 
 
 
-![image-20251225165653954](README.assets/image-20251225165653954.png)
+![image-20251225181814339](README.assets/image-20251225181814339.png)
 
 
 
-![image-20251225165714630](README.assets/image-20251225165714630.png)
+![image-20251225181852295](E:\code\FunASR-main\FunASR-main\senseFlow-live\README.assets\image-20251225181852295.png)
 
 
 
-![image-20251225165731858](README.assets/image-20251225165731858.png)
+![image-20251225181923447](README.assets\image-20251225181923447.png)
 
 
 

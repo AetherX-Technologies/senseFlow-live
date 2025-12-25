@@ -6,15 +6,15 @@ SenseFlow Live 是基于 FunASR 的本地实时语音助手，提供实时转写
 
 
 
-![image-20251225165653954](README_zh.assets/image-20251225165653954.png)
+![image-20251225181814339](README_zh.assets/image-20251225181814339.png)
 
 
 
-![image-20251225165714630](README_zh.assets/image-20251225165714630.png)
+![image-20251225181852295](README_zh.assets/image-20251225181852295.png)
 
 
 
-![image-20251225165731858](README_zh.assets/image-20251225165731858.png)
+![image-20251225181923447](README_zh.assets/image-20251225181923447-17666580595464.png)
 
 ## 运行要求
 - Windows 10/11
