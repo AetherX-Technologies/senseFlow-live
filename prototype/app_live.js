@@ -103,6 +103,19 @@ document.addEventListener('DOMContentLoaded', () => {
     let pendingSettingsSync = false;
 
     // ============ Timer ============
+    function formatRelative(tsMs) {
+        if (!tsMs) return '';
+        const diffSec = Math.max(0, Math.floor((Date.now() - tsMs) / 1000));
+        if (diffSec < 10) return '刚刚';
+        if (diffSec < 60) return `${diffSec}s 前`;
+        const m = Math.floor(diffSec / 60);
+        if (m < 60) return `${m} 分钟前`;
+        const h = Math.floor(m / 60);
+        if (h < 24) return `${h} 小时前`;
+        const d = Math.floor(h / 24);
+        return `${d} 天前`;
+    }
+
     function updateTimer() {
         const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
         const h = Math.floor(elapsed / 3600);
@@ -111,10 +124,24 @@ document.addEventListener('DOMContentLoaded', () => {
         if (sessionTimer) {
             sessionTimer.textContent = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
         }
+        updateUpdateBadge();
     }
     setInterval(updateTimer, 1000);
 
     // ============ UI Helpers ============
+    function updateUpdateBadge() {
+        if (!updateBadge) return;
+        const session = getActiveSession();
+        if (!session || !session.lastUpdateTs) {
+            updateBadge.textContent = '等待更新';
+            updateBadge.style.opacity = '0.7';
+            return;
+        }
+        const rel = formatRelative(session.lastUpdateTs);
+        updateBadge.textContent = `上次更新：${rel}`;
+        updateBadge.style.opacity = '0.9';
+    }
+
     function formatTimestamp(ts) {
         if (!ts) return '';
         const date = new Date(ts * 1000);
@@ -124,7 +151,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function formatHistoryTime(ts) {
         if (!ts) return '未知';
         const date = new Date(ts * 1000);
-        return date.toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const local = date.toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        return `${local} (${formatRelative(date.getTime())})`;
     }
 
     function formatClock(tsMs) {
@@ -354,6 +382,7 @@ document.addEventListener('DOMContentLoaded', () => {
             lastInsights: { summary: [], summary_live: [], actions: [], questions: [] },
             qaLog: [],
             draftPreview: '',
+            lastUpdateTs: null,
             loaded: false,
         };
     }
@@ -510,6 +539,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderSummaryList(summaryLiveList, session.lastInsights.summary_live || [], '等待新增内容...');
         renderItemList(actionList, session.lastInsights.actions || [], '暂无待办', 'ph ph-check-circle', 'var(--accent-details)');
         renderItemList(questionList, session.lastInsights.questions || [], '暂无问题', 'ph ph-question', 'var(--accent-secondary)');
+        updateUpdateBadge();
     }
 
     function setUpdateBadgeDefault() {
@@ -1282,6 +1312,9 @@ document.addEventListener('DOMContentLoaded', () => {
             actions: insights.actions || [],
             questions: insights.questions || [],
         };
+        if (session.lastInsights.summary.length || session.lastInsights.summary_live.length || session.lastInsights.actions.length || session.lastInsights.questions.length) {
+            session.lastUpdateTs = Date.now();
+        }
 
         const qa = (payload.qa || []).slice().sort((a, b) => {
             const aTs = a.ts_ms || 0;
@@ -1477,6 +1510,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         markSessionActivity(sessionId, Date.now() / 1000);
+        session.lastUpdateTs = Date.now();
 
         if (sessionId !== activeSessionId) {
             return;

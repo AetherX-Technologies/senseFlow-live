@@ -336,6 +336,7 @@ class ASRWebSocketServer:
         self._repair_limit = int(os.getenv("INSIGHTS_REPAIR_LIMIT", "2"))
         self._repair_task = None
         self._repair_lock: Optional[asyncio.Lock] = None
+        self._live_seeded = False
 
     async def broadcast(self, message: dict):
         """Send message to all connected clients"""
@@ -814,6 +815,26 @@ class ASRWebSocketServer:
             except Exception as e:
                 print(f"{YELLOW}[Audio] Error: {e}{RESET}")
 
+    async def _seed_live_from_mongo(self) -> None:
+        if self._live_seeded or not self.mongo or not self.engine or not self.insights:
+            return
+        session_id = self.engine.session_id
+        try:
+            data = await asyncio.to_thread(self.mongo.get_session_data, session_id)
+        except Exception as e:
+            print(f"{YELLOW}[Mongo]{RESET} Seed error: {e}")
+            return
+        transcript_items = data.get("transcript", [])
+        transcript_parts = [
+            item.get("text", "")
+            for item in transcript_items
+            if item.get("text")
+        ]
+        if not transcript_parts:
+            return
+        self.insights.seed_from_history(transcript_parts, data.get("insights"))
+        self._live_seeded = True
+
     async def handler(self, websocket: websockets.WebSocketServerProtocol):
         """Handle WebSocket connection"""
         self.clients.add(websocket)
@@ -853,6 +874,7 @@ class ASRWebSocketServer:
                         new_session_id = self.engine.new_session()
                         self.insights = InsightGenerator(self.llm)
                         self.insights.set_summary_interval(self.settings["summary"]["intervalSec"])
+                        self._live_seeded = False
                         if self.mongo:
                             self.mongo.log_event(
                                 old_session_id,
@@ -903,6 +925,7 @@ class ASRWebSocketServer:
                                     }
                                 }, ensure_ascii=False))
                                 continue
+                            await self._seed_live_from_mongo()
                             answer = await self.insights.answer(question)
                             if self.mongo:
                                 self.mongo.log_event(

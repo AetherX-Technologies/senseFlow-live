@@ -301,6 +301,37 @@ class LLMClient:
             print(f"[LLM] Outlines error ({type(e).__name__}): {e}")
             return None
 
+    def _run_claude_cli_prompt(self, prompt: str, system_prompt: str) -> str:
+        """Run Claude CLI for free-form (non-JSON) answers."""
+        cli_js = self._find_claude_cli_js()
+        cmd = [
+            "node",
+            cli_js,
+            "-p",
+            "--no-session-persistence",
+            "--model",
+            self.config.model,
+            "--system-prompt",
+            system_prompt,
+            prompt,
+        ]
+
+        def _run() -> str:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=self.config.cli_timeout,
+                check=False,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(result.stderr.strip() or "Claude CLI failed.")
+            return result.stdout.strip()
+
+        return _run()
+
     async def chat(self, messages: List[Dict[str, str]],
                    temperature: float = 0.3,
                    response_format: Optional[Dict[str, Any]] = None) -> Optional[str]:
@@ -412,12 +443,51 @@ class LLMClient:
 
         return {"summary": [], "summary_live": [], "actions": [], "questions": []}
 
-    async def answer_question(self, question: str, transcript: str) -> str:
+    async def answer_question(
+        self,
+        question: str,
+        transcript: str,
+        insights: Optional[Dict[str, Any]] = None
+    ) -> str:
         """Answer a question based on transcript context"""
-        if len(transcript) < 20:
+        has_insights = False
+        if insights:
+            has_insights = bool(
+                insights.get("summary")
+                or insights.get("summary_live")
+                or insights.get("actions")
+                or insights.get("questions")
+            )
+        if len(transcript) < 20 and not has_insights:
             return "目前转录内容较少，请稍后再问。"
 
-        prompt = f"""基于以下会议转录内容回答问题。
+        insights_payload = insights or {}
+        summary_lines = "\n".join(f"- {item}" for item in insights_payload.get("summary", []))
+        summary_live_lines = "\n".join(f"- {item}" for item in insights_payload.get("summary_live", []))
+        action_lines = "\n".join(
+            f"- {item.get('text', '') if isinstance(item, dict) else item}"
+            for item in insights_payload.get("actions", [])
+        )
+        question_lines = "\n".join(
+            f"- {item.get('text', '') if isinstance(item, dict) else item}"
+            for item in insights_payload.get("questions", [])
+        )
+
+        context_block = f"""已生成摘要（可能为空）：
+{summary_lines or "（空）"}
+
+实时摘要（可能为空）：
+{summary_live_lines or "（空）"}
+
+待办事项（可能为空）：
+{action_lines or "（空）"}
+
+悬而未决问题（可能为空）：
+{question_lines or "（空）"}"""
+
+        prompt = f"""请基于以下信息回答问题，优先使用完整转录内容，摘要仅用于辅助。
+
+{context_block}
 
 转录内容：
 {transcript}
@@ -430,6 +500,16 @@ class LLMClient:
             {"role": "system", "content": "你是一个会议助手，根据会议转录内容回答问题。回答要简洁准确，基于转录内容。"},
             {"role": "user", "content": prompt}
         ]
+
+        # 优先使用 Claude CLI（如果启用），避免本地 HTTP 不可用
+        if self.config.use_claude_cli:
+            try:
+                return self._run_claude_cli_prompt(
+                    prompt,
+                    "你是一个会议助手，根据会议转录内容回答问题。回答要简洁准确，基于转录内容。"
+                )
+            except Exception as e:
+                print(f"[LLM] Claude CLI QA failed: {e}")
 
         result = await self.chat(messages, temperature=0.3)
         return result or "抱歉，无法生成回答。"
@@ -497,7 +577,11 @@ class InsightGenerator:
 
     async def answer(self, question: str) -> str:
         """Answer a question about the transcript"""
-        return await self.llm.answer_question(question, self.full_transcript)
+        return await self.llm.answer_question(
+            question,
+            self.full_transcript,
+            insights=self._last_insights
+        )
 
     def reset(self):
         """Reset transcript state"""
@@ -506,6 +590,20 @@ class InsightGenerator:
         self._last_summary_index = 0
         self._last_insights = {"summary": [], "summary_live": [], "actions": [], "questions": []}
         self._last_summary_time = 0.0
+
+    def seed_from_history(self, transcript_parts: List[str], insights: Optional[Dict[str, Any]] = None) -> None:
+        """Seed transcript and insights from persisted history."""
+        self.reset()
+        for text in transcript_parts:
+            if text:
+                self._transcript_parts.append(text)
+        normalized = self.llm._normalize_summary_payload(insights) if insights else None
+        if normalized is not None:
+            self._last_insights = normalized
+        transcript = self.full_transcript
+        self._last_summary_length = len(transcript)
+        self._last_summary_index = len(self._transcript_parts)
+        self._last_summary_time = time.time()
 
     def current_insights(self) -> Dict[str, Any]:
         """Return a snapshot of latest insights."""
