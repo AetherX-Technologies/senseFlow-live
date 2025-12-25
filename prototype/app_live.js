@@ -67,6 +67,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let pendingNewSession = false;
     let serverMics = [];
     let audioPaused = false;
+    let autoScrollSuspendUntil = 0;
+    let autoScrollTimer = null;
+    let autoScrollInProgress = false;
 
     const SETTINGS_KEY = 'senseflow.settings';
     const defaultSettings = {
@@ -280,7 +283,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function scrollToBottom() {
         if (!settings.display.autoScroll) return;
+        if (Date.now() < autoScrollSuspendUntil) return;
+        autoScrollInProgress = true;
         timelineContainer.scrollTop = timelineContainer.scrollHeight;
+        requestAnimationFrame(() => {
+            autoScrollInProgress = false;
+        });
     }
 
     function listToMarkdown(items, renderItem) {
@@ -1081,6 +1089,27 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadNotesBtn.addEventListener('click', downloadExport);
     }
 
+    function suspendAutoScroll() {
+        autoScrollSuspendUntil = Date.now() + 5000;
+        if (autoScrollTimer) {
+            clearTimeout(autoScrollTimer);
+        }
+        autoScrollTimer = setTimeout(() => {
+            autoScrollSuspendUntil = 0;
+        }, 5000);
+    }
+
+    function initTimelineAutoScrollGuard() {
+        if (!timelineContainer) return;
+        timelineContainer.addEventListener('scroll', () => {
+            if (autoScrollInProgress) return;
+            suspendAutoScroll();
+        });
+        timelineContainer.addEventListener('wheel', suspendAutoScroll, { passive: true });
+        timelineContainer.addEventListener('touchstart', suspendAutoScroll, { passive: true });
+        timelineContainer.addEventListener('touchmove', suspendAutoScroll, { passive: true });
+    }
+
     // ============ History UI ============
     function renderHistoryList() {
         if (!historyList || !historyCount) return;
@@ -1796,6 +1825,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initDownloads();
     initHistoryActions();
     initSettingsDrawer();
+    initTimelineAutoScrollGuard();
     applySettings();
 
     // Connect to WebSocket server

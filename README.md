@@ -6,11 +6,11 @@ This README focuses only on the live prototype under `prototype/`. Other folders
 
 
 
-![image-20251224164819217](README.assets/image-20251224164819217.png)
+![image-20251225162330278](README.assets/image-20251225162330278.png)
 
 
 
-![image-20251224164847365](README.assets/image-20251224164847365.png)
+![image-20251225162358806](README.assets/image-20251225162358806.png)
 
 
 
@@ -64,6 +64,8 @@ Header
 History
 - Left list shows sessions stored in MongoDB
 - LIVE tag marks the current active session
+- Terminate button appears only on the LIVE session; once terminated, transcription and insights stop for that session
+- Terminated sessions show a red badge
 - Clicking a session loads its transcript, summaries, and Q&A
 
 Realtime transcript
@@ -78,7 +80,7 @@ Insights
 - Open questions
 
 Q&A
-- Works only for the LIVE session
+- Works for any session; historical Q&A uses transcript + insights loaded from MongoDB
 - Disabled when LLM is turned off in Settings
 
 ## Settings
@@ -102,7 +104,7 @@ Summary and Q&A
 - Model selection (updates LLM model name)
 
 Display and export
-- Auto scroll
+- Auto scroll (manual scroll pauses for 5 seconds before resuming)
 - Show timestamps
 - Export format: Markdown, JSON, or Text
 
@@ -120,7 +122,7 @@ Storage
 - No transcription: check Pause state, noise gate, mic selection, and model paths
 - No summaries/Q&A: enable LLM in Settings and verify LLM endpoint in `prototype/ws_server.py`
 - History empty: Mongo disabled or not running
-- WebSocket errors: ensure `ws://localhost:8766` is reachable
+- WebSocket errors: ensure `ws://127.0.0.1:8766` is reachable
 
 ## License
 See `LICENSE`.

@@ -6,11 +6,11 @@ SenseFlow Live 是基于 FunASR 的本地实时语音助手，提供实时转写
 
 
 
-![image-20251224164819217](README_zh.assets/image-20251224164819217.png)
+![image-20251225162330278](README_zh.assets/image-20251225162330278.png)
 
 
 
-![image-20251224164847365](README_zh.assets/image-20251224164847365.png)
+![image-20251225162358806](README_zh.assets/image-20251225162358806.png)
 
 
 
@@ -64,6 +64,8 @@ E:\conda_envs\envs\funasr\python.exe prototype\ws_server.py
 历史列表
 - 左侧列表显示 MongoDB 中的会话
 - LIVE 标记当前会话
+- 终止按钮仅在 LIVE 会话显示，终止后该会话不再转写与生成摘要
+- 已终止的会话会显示红色标记
 - 点击历史会话可回看转写、摘要与问答
 
 实时转写
@@ -78,7 +80,7 @@ E:\conda_envs\envs\funasr\python.exe prototype\ws_server.py
 - Open Questions（未决问题）
 
 问答
-- 仅支持 LIVE 会话
+- 支持所有会话问答；历史问答会从 MongoDB 读取转写与摘要
 - 关闭 LLM 时禁用
 
 ## 设置说明
@@ -102,7 +104,7 @@ E:\conda_envs\envs\funasr\python.exe prototype\ws_server.py
 - LLM 模型名
 
 展示与导出
-- 自动滚动
+- 自动滚动（手动滚动后 5 秒无操作再恢复）
 - 时间戳显示
 - 导出格式（Markdown/JSON/纯文本）
 
@@ -119,7 +121,7 @@ E:\conda_envs\envs\funasr\python.exe prototype\ws_server.py
 - 没有转写：检查暂停状态、噪声门、麦克风选择、模型路径
 - 没有摘要/问答：确保 LLM 开启且 `prototype/ws_server.py` 的 LLM 配置可用
 - 历史为空：Mongo 未开启或未运行
-- WebSocket 失败：确认 `ws://localhost:8766` 可访问
+- WebSocket 失败：确认 `ws://127.0.0.1:8766` 可访问
 
 ## 许可协议
 查看 `LICENSE`。

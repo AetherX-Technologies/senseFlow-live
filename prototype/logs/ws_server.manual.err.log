@@ -4,3 +4,33 @@ WARNING:root:trust_remote_code: False
 WARNING:root:trust_remote_code: False
 WARNING:root:trust_remote_code: False
 WARNING:root:trust_remote_code: False
+Traceback (most recent call last):
+  File "E:\code\FunASR-main\FunASR-main\prototype\ws_server.py", line 455, in _generate_and_send_insights
+    insights = await self.insights.generate_insights(force=force)
+  File "e:\code/FunASR-main/FunASR-main/prototype\asr_engine\llm_client.py", line 572, in generate_insights
+    result = await self.llm.generate_summary(new_text, previous=self._last_insights, force=force)
+  File "e:\code/FunASR-main/FunASR-main/prototype\asr_engine\llm_client.py", line 420, in generate_summary
+    return await self._generate_summary_with_claude_cli(prompt, system_prompt)
+  File "e:\code/FunASR-main/FunASR-main/prototype\asr_engine\llm_client.py", line 259, in _generate_summary_with_claude_cli
+    raise ValueError(f"[LLM] Claude CLI returned invalid JSON: {raw[:200]}")
+ValueError: [LLM] Claude CLI returned invalid JSON: {"type":"result","subtype":"error_max_structured_output_retries","duration_ms":51306,"duration_api_ms":80734,"is_error":false,"num_turns":6,"session_id":"a20eb1fc-2f89-411e-8298-3d68be2b55c0","total_c
+Traceback (most recent call last):
+  File "E:\code\FunASR-main\FunASR-main\prototype\ws_server.py", line 455, in _generate_and_send_insights
+    insights = await self.insights.generate_insights(force=force)
+  File "e:\code/FunASR-main/FunASR-main/prototype\asr_engine\llm_client.py", line 572, in generate_insights
+    result = await self.llm.generate_summary(new_text, previous=self._last_insights, force=force)
+  File "e:\code/FunASR-main/FunASR-main/prototype\asr_engine\llm_client.py", line 420, in generate_summary
+    return await self._generate_summary_with_claude_cli(prompt, system_prompt)
+  File "e:\code/FunASR-main/FunASR-main/prototype\asr_engine\llm_client.py", line 259, in _generate_summary_with_claude_cli
+    raise ValueError(f"[LLM] Claude CLI returned invalid JSON: {raw[:200]}")
+ValueError: [LLM] Claude CLI returned invalid JSON: {"type":"result","subtype":"error_max_structured_output_retries","duration_ms":49743,"duration_api_ms":80604,"is_error":false,"num_turns":7,"session_id":"b7390f01-e982-4ca8-8ea6-ee9e04c2112b","total_c
+Traceback (most recent call last):
+  File "E:\code\FunASR-main\FunASR-main\prototype\ws_server.py", line 455, in _generate_and_send_insights
+    insights = await self.insights.generate_insights(force=force)
+  File "e:\code/FunASR-main/FunASR-main/prototype\asr_engine\llm_client.py", line 572, in generate_insights
+    result = await self.llm.generate_summary(new_text, previous=self._last_insights, force=force)
+  File "e:\code/FunASR-main/FunASR-main/prototype\asr_engine\llm_client.py", line 420, in generate_summary
+    return await self._generate_summary_with_claude_cli(prompt, system_prompt)
+  File "e:\code/FunASR-main/FunASR-main/prototype\asr_engine\llm_client.py", line 259, in _generate_summary_with_claude_cli
+    raise ValueError(f"[LLM] Claude CLI returned invalid JSON: {raw[:200]}")
+ValueError: [LLM] Claude CLI returned invalid JSON: {"type":"result","subtype":"error_max_structured_output_retries","duration_ms":89051,"duration_api_ms":119195,"is_error":false,"num_turns":8,"session_id":"9d7c54fa-0ae4-4226-a451-6cd1bdbf32dc","total_
