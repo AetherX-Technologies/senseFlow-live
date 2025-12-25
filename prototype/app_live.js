@@ -50,7 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const settingAutoCleanup = document.getElementById('setting-auto-cleanup');
 
     // Config
-    const WS_URL = 'ws://localhost:8766';
+    const WS_URL = 'ws://127.0.0.1:8766';
     const HISTORY_LIMIT = 50;
 
     // State
@@ -63,6 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let activeSessionId = null;
     let currentSegmentId = null;
     let waitingForAnswer = false;
+    let pendingQAForSessionId = null;
     let pendingNewSession = false;
     let serverMics = [];
     let audioPaused = false;
@@ -164,6 +165,55 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function mergeHistoryMeta(existing, incoming) {
+        if (!incoming) return existing || {};
+        const merged = Object.assign({}, existing || {}, incoming);
+        ['started_at', 'last_active', 'terminated_at'].forEach((key) => {
+            if ((incoming[key] === null || incoming[key] === undefined) && existing && existing[key] !== undefined) {
+                merged[key] = existing[key];
+            }
+        });
+        if (incoming.terminated === undefined && existing && existing.terminated !== undefined) {
+            merged.terminated = existing.terminated;
+        }
+        const incomingSort = Math.max(
+            Number(incoming.sort_ts || 0),
+            Number(incoming.last_active || 0),
+            Number(incoming.terminated_at || 0),
+            Number(incoming.started_at || 0)
+        );
+        const existingSort = Number(existing?.sort_ts || 0);
+        if (incomingSort || existingSort) {
+            merged.sort_ts = Math.max(existingSort, incomingSort);
+        }
+        return merged;
+    }
+
+    function getSessionSortTs(sessionId) {
+        const meta = historyMeta.get(sessionId) || {};
+        if (meta.sort_ts) {
+            return Number(meta.sort_ts);
+        }
+        const lastActive = Number(meta.last_active || 0);
+        const terminatedAt = Number(meta.terminated_at || 0);
+        const startedAt = Number(meta.started_at || 0);
+        let ts = Math.max(lastActive, terminatedAt, startedAt);
+        if (!ts && sessionId === liveSessionId) {
+            ts = Date.now() / 1000;
+        }
+        return ts;
+    }
+
+    function setSessionSortTs(sessionId, ts) {
+        if (!sessionId) return;
+        const meta = historyMeta.get(sessionId) || { session_id: sessionId };
+        const next = Number(ts || 0);
+        if (next > Number(meta.sort_ts || 0)) {
+            meta.sort_ts = next;
+            historyMeta.set(sessionId, meta);
+        }
+    }
+
     function showConnectionBanner(show) {
         if (!connectionBanner) return;
         connectionBanner.classList.toggle('show', show);
@@ -189,6 +239,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
             case 'paused':
                 label.textContent = '已暂停';
+                break;
+            case 'terminated':
+                label.textContent = '已终止';
                 break;
         }
     }
@@ -384,6 +437,7 @@ document.addEventListener('DOMContentLoaded', () => {
             draftPreview: '',
             lastUpdateTs: null,
             loaded: false,
+            terminated: false,
         };
     }
 
@@ -399,6 +453,12 @@ document.addEventListener('DOMContentLoaded', () => {
         return activeSessionId ? ensureSession(activeSessionId) : null;
     }
 
+    function isSessionTerminated(sessionId) {
+        if (!sessionId) return false;
+        const meta = historyMeta.get(sessionId);
+        return Boolean(meta && meta.terminated);
+    }
+
     function markSessionActivity(sessionId, tsSeconds) {
         if (!sessionId) return;
         const meta = historyMeta.get(sessionId) || { session_id: sessionId };
@@ -407,6 +467,7 @@ document.addEventListener('DOMContentLoaded', () => {
             meta.started_at = nowTs;
         }
         meta.last_active = nowTs;
+        meta.sort_ts = Math.max(Number(meta.sort_ts || 0), nowTs);
         historyMeta.set(sessionId, meta);
     }
 
@@ -419,6 +480,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setUpdateBadgeDefault();
         renderHistoryList();
         updateQAAvailability();
+        applyActiveSessionTermination();
         if (options.resetTimer) {
             sessionStartTime = Date.now();
         }
@@ -432,6 +494,7 @@ document.addEventListener('DOMContentLoaded', () => {
             meta.started_at = now;
         }
         meta.last_active = meta.last_active || now;
+        meta.sort_ts = Math.max(Number(meta.sort_ts || 0), now);
         Object.assign(meta, overrides);
         historyMeta.set(sessionId, meta);
         if (!historyOrder.includes(sessionId)) {
@@ -546,6 +609,29 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!updateBadge) return;
         updateBadge.textContent = activeSessionId === liveSessionId ? '等待中' : '历史会话';
         updateBadge.style.opacity = '0.7';
+    }
+
+    function applyActiveSessionTermination() {
+        if (!activeSessionId || !liveSessionId) {
+            setPauseButtonDisabled(false);
+            return;
+        }
+        const liveTerminated = isSessionTerminated(liveSessionId);
+        if (liveTerminated && activeSessionId === liveSessionId) {
+            setStatus('terminated');
+            setPauseButtonDisabled(true);
+            if (draftPreview) {
+                draftPreview.textContent = '会话已终止';
+            }
+            return;
+        }
+        setPauseButtonDisabled(false);
+    }
+
+    function setPauseButtonDisabled(disabled) {
+        if (!pauseBtn) return;
+        pauseBtn.disabled = disabled;
+        pauseBtn.classList.toggle('disabled', disabled);
     }
 
     function setPauseButtonState(paused) {
@@ -791,15 +877,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateQAAvailability() {
-        const isLive = activeSessionId && activeSessionId === liveSessionId;
+        const hasSession = Boolean(activeSessionId);
+        const isLive = hasSession && activeSessionId === liveSessionId;
+        const isTerminated = hasSession && isSessionTerminated(activeSessionId);
         const llmEnabled = settings.summary.llmEnabled;
-        const enabled = isLive && llmEnabled;
+        const enabled = hasSession && llmEnabled;
         qaInput.disabled = !enabled;
         qaSend.disabled = !enabled;
         if (!llmEnabled) {
             qaInput.placeholder = 'LLM 已关闭';
+        } else if (!hasSession) {
+            qaInput.placeholder = '请选择会话后提问';
+        } else if (isLive) {
+            qaInput.placeholder = isTerminated ? '向 AI 提问（已终止会话）' : '向 AI 提问...';
         } else {
-            qaInput.placeholder = isLive ? '向 AI 提问...' : '仅支持实时会话提问';
+            qaInput.placeholder = '向 AI 提问（历史会话）';
         }
     }
 
@@ -993,9 +1085,19 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderHistoryList() {
         if (!historyList || !historyCount) return;
         historyList.textContent = '';
-        historyCount.textContent = historyOrder.length.toString();
+        const orderedIds = historyOrder.slice().sort((a, b) => {
+            const aMeta = historyMeta.get(a) || {};
+            const bMeta = historyMeta.get(b) || {};
+            const aRank = (a === liveSessionId && !aMeta.terminated) ? 0 : 1;
+            const bRank = (b === liveSessionId && !bMeta.terminated) ? 0 : 1;
+            if (aRank !== bRank) return aRank - bRank;
+            const diff = getSessionSortTs(b) - getSessionSortTs(a);
+            if (diff !== 0) return diff;
+            return String(a).localeCompare(String(b));
+        });
+        historyCount.textContent = orderedIds.length.toString();
 
-        if (historyOrder.length === 0) {
+        if (orderedIds.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'history-empty';
             empty.textContent = '暂无历史记录';
@@ -1003,8 +1105,10 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        historyOrder.forEach(sessionId => {
+        orderedIds.forEach(sessionId => {
             const meta = historyMeta.get(sessionId) || {};
+            const isLive = sessionId === liveSessionId;
+            const isTerminated = Boolean(meta.terminated);
             const item = document.createElement('button');
             item.type = 'button';
             item.className = 'history-item';
@@ -1013,8 +1117,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (sessionId === activeSessionId) {
                 item.classList.add('active');
             }
-            if (sessionId === liveSessionId) {
+            if (isLive && !isTerminated) {
                 item.classList.add('live');
+            }
+            if (isTerminated) {
+                item.classList.add('terminated');
             }
 
             const title = document.createElement('div');
@@ -1023,19 +1130,38 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const badges = document.createElement('div');
             badges.className = 'history-badges';
-            if (sessionId === liveSessionId) {
+            if (isLive && !isTerminated) {
                 const liveBadge = document.createElement('span');
                 liveBadge.className = 'history-badge';
                 liveBadge.textContent = 'LIVE';
                 badges.appendChild(liveBadge);
             }
+            if (isTerminated) {
+                const endBadge = document.createElement('span');
+                endBadge.className = 'history-badge end';
+                endBadge.textContent = '已终止';
+                badges.appendChild(endBadge);
+            }
+            if (isLive && !isTerminated) {
+                const endBtn = document.createElement('button');
+                endBtn.type = 'button';
+                endBtn.className = 'history-action';
+                endBtn.innerHTML = '<i class="ph ph-stop-circle"></i>终止';
+                endBtn.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    requestSessionTerminate(sessionId);
+                });
+                badges.appendChild(endBtn);
+            }
 
             const metaLine = document.createElement('div');
             metaLine.className = 'history-meta';
             const startedText = meta.started_at ? `开始 ${formatHistoryTime(meta.started_at)}` : '开始未知';
-            const lastText = meta.last_active
-                ? `最近 ${formatHistoryTime(meta.last_active)}`
-                : (sessionId === liveSessionId ? '进行中' : '暂无更新');
+            const lastText = isTerminated
+                ? (meta.terminated_at ? `终止 ${formatHistoryTime(meta.terminated_at)}` : '已终止')
+                : (meta.last_active
+                    ? `最近 ${formatHistoryTime(meta.last_active)}`
+                    : (isLive ? '进行中' : '暂无更新'));
             metaLine.textContent = `${startedText} · ${lastText}`;
 
             const headerRow = document.createElement('div');
@@ -1065,6 +1191,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
         ws.send(JSON.stringify({
             command: 'history.load',
+            session_id: sessionId,
+        }));
+    }
+
+    function requestSessionTerminate(sessionId) {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({
+            command: 'session.terminate',
             session_id: sessionId,
         }));
     }
@@ -1177,6 +1311,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 handleEngineReset(payload);
                 break;
 
+            case 'session.terminated':
+                handleSessionTerminated(payload);
+                break;
+
             case 'history.list':
                 handleHistoryList(payload);
                 break;
@@ -1232,7 +1370,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const previousSessionId = payload.previous_session_id;
         liveSessionId = newSessionId;
         ensureSession(newSessionId);
-        touchHistorySession(newSessionId, { source: 'live' });
+        touchHistorySession(newSessionId, { source: 'live', terminated: false });
 
         if (!activeSessionId || activeSessionId === previousSessionId) {
             setActiveSession(newSessionId, { resetTimer: true });
@@ -1240,29 +1378,66 @@ document.addEventListener('DOMContentLoaded', () => {
         pendingNewSession = false;
         requestHistoryList();
         requestHistoryLoad(newSessionId);
+        applyActiveSessionTermination();
     }
 
     function handleEngineReset(payload) {
         if (payload && payload.session_id) {
             liveSessionId = payload.session_id;
-            touchHistorySession(payload.session_id, { source: 'live' });
+            touchHistorySession(payload.session_id, { source: 'live', terminated: false });
             if (pendingNewSession || activeSessionId === payload.session_id) {
                 setActiveSession(payload.session_id, { resetTimer: true });
             }
             pendingNewSession = false;
+            applyActiveSessionTermination();
+        }
+    }
+
+    function handleSessionTerminated(payload) {
+        const sessionId = payload?.session_id;
+        if (!sessionId) return;
+        const terminatedAt = payload.terminated_at ? Number(payload.terminated_at) : null;
+        const meta = historyMeta.get(sessionId) || { session_id: sessionId };
+        meta.terminated = true;
+        if (terminatedAt) {
+            meta.terminated_at = terminatedAt;
+        }
+        meta.sort_ts = Math.max(Number(meta.sort_ts || 0), terminatedAt || (Date.now() / 1000));
+        historyMeta.set(sessionId, meta);
+        const session = ensureSession(sessionId);
+        if (session) {
+            session.terminated = true;
+        }
+        renderHistoryList();
+        if (sessionId === activeSessionId) {
+            applyActiveSessionTermination();
+            renderActiveSession();
+        } else {
+            updateQAAvailability();
         }
     }
 
     function handleHistoryList(payload) {
         const sessionsList = payload.sessions || [];
+        const previousMeta = new Map(historyMeta);
         historyMeta.clear();
         historyOrder = [];
 
         sessionsList.forEach(item => {
             if (!item.session_id) return;
-            historyMeta.set(item.session_id, item);
+            const merged = mergeHistoryMeta(previousMeta.get(item.session_id), item);
+            if (item.session_id === payload.live_session_id && !merged.started_at) {
+                merged.started_at = Date.now() / 1000;
+            }
+            if (item.session_id === payload.live_session_id && !merged.terminated) {
+                merged.sort_ts = Math.max(Number(merged.sort_ts || 0), Date.now() / 1000);
+            }
+            historyMeta.set(item.session_id, merged);
             historyOrder.push(item.session_id);
-            ensureSession(item.session_id);
+            const session = ensureSession(item.session_id);
+            if (session) {
+                session.terminated = Boolean(merged.terminated);
+            }
         });
 
         if (payload.live_session_id) {
@@ -1274,6 +1449,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             renderHistoryList();
         }
+        updateQAAvailability();
+        applyActiveSessionTermination();
     }
 
     function handleHistorySession(payload) {
@@ -1312,9 +1489,19 @@ document.addEventListener('DOMContentLoaded', () => {
             actions: insights.actions || [],
             questions: insights.questions || [],
         };
+        if (payload.terminated) {
+            session.terminated = true;
+            const meta = historyMeta.get(sessionId) || { session_id: sessionId };
+            meta.terminated = true;
+            if (payload.terminated_at) {
+                meta.terminated_at = payload.terminated_at;
+            }
+            historyMeta.set(sessionId, meta);
+        }
         if (session.lastInsights.summary.length || session.lastInsights.summary_live.length || session.lastInsights.actions.length || session.lastInsights.questions.length) {
             session.lastUpdateTs = Date.now();
         }
+        setSessionSortTs(sessionId, Date.now() / 1000);
 
         const qa = (payload.qa || []).slice().sort((a, b) => {
             const aTs = a.ts_ms || 0;
@@ -1335,6 +1522,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (sessionId === activeSessionId) {
             renderActiveSession();
+            applyActiveSessionTermination();
         }
     }
 
@@ -1353,6 +1541,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const paused = Boolean(payload.paused);
         audioPaused = paused;
         setPauseButtonState(paused);
+        if (liveSessionId && isSessionTerminated(liveSessionId) && activeSessionId === liveSessionId) {
+            setStatus('terminated');
+            draftPreview.textContent = '会话已终止';
+            setPauseButtonDisabled(true);
+            return;
+        }
         if (paused) {
             setStatus('paused');
             draftPreview.textContent = '录音已暂停';
@@ -1511,6 +1705,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         markSessionActivity(sessionId, Date.now() / 1000);
         session.lastUpdateTs = Date.now();
+        setSessionSortTs(sessionId, Date.now() / 1000);
 
         if (sessionId !== activeSessionId) {
             return;
@@ -1535,9 +1730,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         session.qaLog.push({ role: 'ai', text: answer, ts: Date.now() });
         markSessionActivity(sessionId, Date.now() / 1000);
+        setSessionSortTs(sessionId, Date.now() / 1000);
 
-        if (sessionId === liveSessionId) {
+        if (pendingQAForSessionId && sessionId === pendingQAForSessionId) {
             waitingForAnswer = false;
+            pendingQAForSessionId = null;
         }
 
         if (sessionId !== activeSessionId) {
@@ -1559,8 +1756,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        if (!activeSessionId || activeSessionId !== liveSessionId) {
-            appendQABubble('仅支持实时会话问答，请先切换到最新会话。', 'ai');
+        if (!activeSessionId) {
+            appendQABubble('请先选择一个会话再提问。', 'ai');
             return;
         }
 
@@ -1572,6 +1769,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (ws && ws.readyState === WebSocket.OPEN) {
             waitingForAnswer = true;
+            pendingQAForSessionId = activeSessionId;
             ws.send(JSON.stringify({
                 command: 'ask',
                 question: query,

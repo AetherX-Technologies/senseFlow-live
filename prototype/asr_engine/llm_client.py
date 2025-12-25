@@ -504,7 +504,8 @@ class LLMClient:
         # 优先使用 Claude CLI（如果启用），避免本地 HTTP 不可用
         if self.config.use_claude_cli:
             try:
-                return self._run_claude_cli_prompt(
+                return await asyncio.to_thread(
+                    self._run_claude_cli_prompt,
                     prompt,
                     "你是一个会议助手，根据会议转录内容回答问题。回答要简洁准确，基于转录内容。"
                 )

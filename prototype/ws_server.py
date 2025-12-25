@@ -11,6 +11,7 @@ import sys
 import ctypes
 import queue
 import threading
+import time
 from datetime import datetime, timezone, timedelta
 import numpy as np
 import sounddevice as sd
@@ -117,6 +118,15 @@ class MongoLogger:
                     "first_at": {"$min": "$created_at"},
                     "last_at": {"$max": "$created_at"},
                     "event_count": {"$sum": 1},
+                    "terminated_at": {
+                        "$max": {
+                            "$cond": [
+                                {"$eq": ["$event_type", "session.terminated"]},
+                                "$created_at",
+                                None
+                            ]
+                        }
+                    },
                 }
             },
             {"$sort": {"last_at": -1}},
@@ -126,11 +136,14 @@ class MongoLogger:
         for doc in self._events.aggregate(pipeline):
             first_at = doc.get("first_at")
             last_at = doc.get("last_at")
+            terminated_at = doc.get("terminated_at")
             sessions.append({
                 "session_id": doc.get("_id", ""),
                 "started_at": first_at.timestamp() if first_at else None,
                 "last_active": last_at.timestamp() if last_at else None,
                 "event_count": int(doc.get("event_count", 0)),
+                "terminated": bool(terminated_at),
+                "terminated_at": terminated_at.timestamp() if terminated_at else None,
             })
         return sessions
 
@@ -197,11 +210,19 @@ class MongoLogger:
                 "ts_ms": ts_ms,
             })
 
+        terminated_doc = self._events.find_one(
+            {"session_id": session_id, "event_type": "session.terminated"},
+            sort=[("created_at", -1)],
+        )
+        terminated_at = terminated_doc.get("created_at") if terminated_doc else None
+
         return {
             "session_id": session_id,
             "transcript": transcript,
             "insights": insights,
             "qa": qa,
+            "terminated": bool(terminated_at),
+            "terminated_at": terminated_at.timestamp() if terminated_at else None,
         }
 
     def close(self) -> None:
@@ -337,6 +358,8 @@ class ASRWebSocketServer:
         self._repair_task = None
         self._repair_lock: Optional[asyncio.Lock] = None
         self._live_seeded = False
+        self._terminated_sessions: Dict[str, float] = {}
+        self._paused_by_terminate = False
 
     async def broadcast(self, message: dict):
         """Send message to all connected clients"""
@@ -359,6 +382,30 @@ class ASRWebSocketServer:
             or insights.get("questions")
         )
 
+    def _is_session_terminated(self, session_id: Optional[str]) -> bool:
+        if not session_id:
+            return False
+        return session_id in self._terminated_sessions
+
+    def _get_terminated_at(self, session_id: Optional[str]) -> Optional[float]:
+        if not session_id:
+            return None
+        return self._terminated_sessions.get(session_id)
+
+    def _mark_session_terminated(self, session_id: str, terminated_at: Optional[float] = None) -> float:
+        ts = terminated_at or time.time()
+        self._terminated_sessions[session_id] = ts
+        return ts
+
+    @staticmethod
+    def _compose_transcript(items: List[Dict[str, Any]]) -> str:
+        parts = [
+            item.get("text", "").strip()
+            for item in items
+            if item.get("text")
+        ]
+        return " ".join(parts).strip()
+
     def _on_event(self, event: ASREvent):
         """Handle ASR event and queue for broadcast"""
         if self._loop:
@@ -368,6 +415,8 @@ class ASRWebSocketServer:
 
     async def _handle_event(self, event: ASREvent):
         """Process ASR event and broadcast"""
+        if self._is_session_terminated(event.session_id):
+            return
         # Broadcast the event
         await self.broadcast(event.to_dict())
 
@@ -399,8 +448,10 @@ class ASRWebSocketServer:
         try:
             if not self.llm_enabled:
                 return
-            print(f"{CYAN}[LLM]{RESET} Generating insights...")
             session_id = self.engine.session_id
+            if self._is_session_terminated(session_id):
+                return
+            print(f"{CYAN}[LLM]{RESET} Generating insights...")
             insights = await self.insights.generate_insights(force=force)
 
             summary_live = insights.get("summary_live", []) if insights else []
@@ -456,8 +507,26 @@ class ASRWebSocketServer:
                 "started_at": None,
                 "last_active": None,
                 "event_count": 0,
-                "source": "live"
+                "source": "live",
+                "terminated": self._is_session_terminated(live_session_id),
+                "terminated_at": self._get_terminated_at(live_session_id),
             })
+
+        if self._terminated_sessions:
+            session_index = {item.get("session_id"): item for item in sessions}
+            for session_id, terminated_at in self._terminated_sessions.items():
+                meta = session_index.get(session_id)
+                if not meta:
+                    meta = {
+                        "session_id": session_id,
+                        "started_at": None,
+                        "last_active": None,
+                        "event_count": 0,
+                    }
+                    sessions.append(meta)
+                    session_index[session_id] = meta
+                meta["terminated"] = True
+                meta["terminated_at"] = terminated_at
 
         message = {
             "type": "history.list",
@@ -490,6 +559,10 @@ class ASRWebSocketServer:
                 data["insights"] = current
                 if self.mongo:
                     self.mongo.log_event(session_id, "insights.update", current)
+        if self._is_session_terminated(session_id):
+            data["terminated"] = True
+            if not data.get("terminated_at"):
+                data["terminated_at"] = self._get_terminated_at(session_id)
 
         message = {
             "type": "history.session",
@@ -835,6 +908,34 @@ class ASRWebSocketServer:
         self.insights.seed_from_history(transcript_parts, data.get("insights"))
         self._live_seeded = True
 
+    async def _answer_question_for_session(self, session_id: str, question: str) -> str:
+        transcript = ""
+        insights: Dict[str, Any] = {}
+        is_live = self.engine and session_id == self.engine.session_id
+
+        if is_live and not self._is_session_terminated(session_id) and self.insights:
+            await self._seed_live_from_mongo()
+            transcript = self.insights.full_transcript
+            insights = self.insights.current_insights()
+            if transcript or self._has_insights(insights):
+                return await self.llm.answer_question(question, transcript, insights)
+
+        if self.mongo:
+            try:
+                data = await asyncio.to_thread(self.mongo.get_session_data, session_id)
+            except Exception as e:
+                print(f"{YELLOW}[Mongo]{RESET} QA load error: {e}")
+                data = {}
+            transcript = self._compose_transcript(data.get("transcript", []))
+            insights = data.get("insights", {}) or {}
+
+        if not transcript and is_live and self.insights:
+            transcript = self.insights.full_transcript
+            if not self._has_insights(insights):
+                insights = self.insights.current_insights()
+
+        return await self.llm.answer_question(question, transcript, insights)
+
     async def handler(self, websocket: websockets.WebSocketServerProtocol):
         """Handle WebSocket connection"""
         self.clients.add(websocket)
@@ -853,6 +954,14 @@ class ASRWebSocketServer:
             "type": "audio.paused",
             "payload": {"paused": self.audio_paused}
         }, ensure_ascii=False))
+        if self._is_session_terminated(self.engine.session_id):
+            await websocket.send(json.dumps({
+                "type": "session.terminated",
+                "payload": {
+                    "session_id": self.engine.session_id,
+                    "terminated_at": self._get_terminated_at(self.engine.session_id),
+                }
+            }, ensure_ascii=False))
         current_insights = self.insights.current_insights() if self.insights else {}
         if self._has_insights(current_insights):
             await websocket.send(json.dumps({
@@ -875,6 +984,15 @@ class ASRWebSocketServer:
                         self.insights = InsightGenerator(self.llm)
                         self.insights.set_summary_interval(self.settings["summary"]["intervalSec"])
                         self._live_seeded = False
+                        if new_session_id in self._terminated_sessions:
+                            self._terminated_sessions.pop(new_session_id, None)
+                        if self._paused_by_terminate:
+                            self._set_audio_paused(False)
+                            self._paused_by_terminate = False
+                            await self.broadcast({
+                                "type": "audio.paused",
+                                "payload": {"paused": self.audio_paused}
+                            })
                         if self.mongo:
                             self.mongo.log_event(
                                 old_session_id,
@@ -899,9 +1017,39 @@ class ASRWebSocketServer:
                             "payload": {"status": "ok", "session_id": new_session_id}
                         }, ensure_ascii=False))
 
+                    elif cmd == "session.terminate":
+                        session_id = data.get("session_id") or self.engine.session_id
+                        if session_id:
+                            terminated_at = self._get_terminated_at(session_id)
+                            if not terminated_at:
+                                terminated_at = self._mark_session_terminated(session_id)
+                                if self.mongo:
+                                    self.mongo.log_event(
+                                        session_id,
+                                        "session.terminated",
+                                        {"reason": "manual", "terminated_at": terminated_at}
+                                    )
+                            await self.broadcast({
+                                "type": "session.terminated",
+                                "payload": {
+                                    "session_id": session_id,
+                                    "terminated_at": terminated_at,
+                                }
+                            })
+                            if session_id == self.engine.session_id:
+                                if not self.audio_paused:
+                                    self._set_audio_paused(True)
+                                    self._paused_by_terminate = True
+                                else:
+                                    self._paused_by_terminate = False
+                                await self.broadcast({
+                                    "type": "audio.paused",
+                                    "payload": {"paused": self.audio_paused}
+                                })
+
                     elif cmd == "ask":
                         # Handle Q&A
-                        question = data.get("question", "")
+                        question = (data.get("question") or "").strip()
                         target_session_id = data.get("session_id") or self.engine.session_id
                         if question:
                             print(f"{CYAN}[QA]{RESET} Question: {question}")
@@ -915,27 +1063,16 @@ class ASRWebSocketServer:
                                     }
                                 }, ensure_ascii=False))
                                 continue
-                            if target_session_id != self.engine.session_id:
-                                await websocket.send(json.dumps({
-                                    "type": "qa.answer",
-                                    "session_id": target_session_id,
-                                    "payload": {
-                                        "question": question,
-                                        "answer": "当前仅支持实时会话的问答。请切换到最新会话。"
-                                    }
-                                }, ensure_ascii=False))
-                                continue
-                            await self._seed_live_from_mongo()
-                            answer = await self.insights.answer(question)
+                            answer = await self._answer_question_for_session(target_session_id, question)
                             if self.mongo:
                                 self.mongo.log_event(
-                                    self.engine.session_id,
+                                    target_session_id,
                                     "qa.answer",
                                     {"question": question, "answer": answer}
                                 )
                             await websocket.send(json.dumps({
                                 "type": "qa.answer",
-                                "session_id": self.engine.session_id,
+                                "session_id": target_session_id,
                                 "payload": {
                                     "question": question,
                                     "answer": answer
@@ -981,6 +1118,14 @@ class ASRWebSocketServer:
                         was_paused = self.audio_paused
                         if requested is None:
                             requested = not self.audio_paused
+                        if self._is_session_terminated(self.engine.session_id):
+                            if not self.audio_paused:
+                                self._set_audio_paused(True)
+                            await self.broadcast({
+                                "type": "audio.paused",
+                                "payload": {"paused": self.audio_paused}
+                            })
+                            continue
                         try:
                             self._set_audio_paused(bool(requested))
                         except Exception as e:
@@ -989,7 +1134,7 @@ class ASRWebSocketServer:
                             "type": "audio.paused",
                             "payload": {"paused": self.audio_paused}
                         })
-                        if (not was_paused) and self.audio_paused and self.llm_enabled:
+                        if (not was_paused) and self.audio_paused and self.llm_enabled and not self._is_session_terminated(self.engine.session_id):
                             asyncio.create_task(self._generate_and_send_insights(force=True))
 
                 except json.JSONDecodeError:
@@ -1084,7 +1229,7 @@ class ASRWebSocketServer:
 
 
 async def main():
-    server = ASRWebSocketServer(host="localhost", port=8766)
+    server = ASRWebSocketServer(host="127.0.0.1", port=8766)
     try:
         await server.start()
     except KeyboardInterrupt:

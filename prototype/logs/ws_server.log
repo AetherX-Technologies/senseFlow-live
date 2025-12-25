@@ -1,0 +1,175 @@
+============================================================
+[92mASR WebSocket Server + LLM[0m
+============================================================
+
+[1/3] Initializing ASR Engine...
+[ASREngine] Loading ASR model...
+funasr version: 1.2.9.
+[ASREngine] Loading Final ASR model...
+funasr version: 1.2.9.
+Download: E:/code/FunASR-main/FunASR-main/models/models/damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch failed!: Invalid repo_id: model, must be of format namespace/name
+[ASREngine] Final ASR model load failed: E:/code/FunASR-main/FunASR-main/models/models/damo/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch is not registered
+[ASREngine] Falling back to streaming-only final
+[ASREngine] Loading VAD model...
+funasr version: 1.2.9.
+[ASREngine] Loading Punctuation model...
+funasr version: 1.2.9.
+[ASREngine] Ready
+
+[2/3] Testing LLM connection...
+  Model: claude-haiku-4-5-20251001
+  URL: http://127.0.0.1:8040/v1
+
+[3/3] Starting audio capture...
+  Microphone: 麦克风阵列 (适用于数字麦克风的英特尔® 智音技术)
+
+------------------------------------------------------------
+WebSocket: ws://localhost:8766
+Open prototype/index_live.html in browser
+Press [92mCtrl+C[0m to stop
+------------------------------------------------------------
+
+[96m[LLM][0m Added 16 chars, total: 16
+[96m[LLM][0m Generating insights...
+[90m[LLM][0m No insights generated (empty result)
+[96m[LLM][0m Added 17 chars, total: 34
+[96m[LLM][0m Added 26 chars, total: 61
+[96m[LLM][0m Added 17 chars, total: 79
+[96m[LLM][0m Added 22 chars, total: 102
+[96m[LLM][0m Added 12 chars, total: 115
+[96m[LLM][0m Added 15 chars, total: 131
+[96m[LLM][0m Added 8 chars, total: 140
+[96m[LLM][0m Added 10 chars, total: 151
+[96m[LLM][0m Added 18 chars, total: 170
+[96m[LLM][0m Added 17 chars, total: 188
+[96m[LLM][0m Added 19 chars, total: 208
+[96m[LLM][0m Added 17 chars, total: 226
+[96m[LLM][0m Added 16 chars, total: 243
+[96m[LLM][0m Added 27 chars, total: 271
+[96m[LLM][0m Added 18 chars, total: 290
+[96m[LLM][0m Added 20 chars, total: 311
+[96m[LLM][0m Added 27 chars, total: 339
+[96m[LLM][0m Added 14 chars, total: 354
+[96m[LLM][0m Added 46 chars, total: 401
+[96m[LLM][0m Added 7 chars, total: 409
+[96m[LLM][0m Added 24 chars, total: 434
+[96m[LLM][0m Added 9 chars, total: 444
+[96m[LLM][0m Added 26 chars, total: 471
+[96m[LLM][0m Added 18 chars, total: 490
+[96m[LLM][0m Added 42 chars, total: 533
+[96m[LLM][0m Added 12 chars, total: 546
+[96m[LLM][0m Added 14 chars, total: 561
+[96m[LLM][0m Added 32 chars, total: 594
+[96m[LLM][0m Added 21 chars, total: 616
+[96m[LLM][0m Added 13 chars, total: 630
+[96m[LLM][0m Added 9 chars, total: 640
+[96m[LLM][0m Added 22 chars, total: 663
+[96m[LLM][0m Added 7 chars, total: 671
+[96m[LLM][0m Added 21 chars, total: 693
+[96m[LLM][0m Added 21 chars, total: 715
+[96m[LLM][0m Added 53 chars, total: 769
+[96m[LLM][0m Added 76 chars, total: 846
+[96m[LLM][0m Added 25 chars, total: 872
+[96m[LLM][0m Added 20 chars, total: 893
+[96m[LLM][0m Added 21 chars, total: 915
+[96m[LLM][0m Added 35 chars, total: 951
+[96m[LLM][0m Added 25 chars, total: 977
+[96m[LLM][0m Added 14 chars, total: 992
+[96m[LLM][0m Generating insights...
+[96m[LLM][0m Added 17 chars, total: 1010
+[96m[LLM][0m Generating insights...
+[96m[LLM][0m Added 9 chars, total: 1020
+[96m[LLM][0m Generating insights...
+[96m[LLM][0m Added 50 chars, total: 1071
+[96m[LLM][0m Generating insights...
+[96m[LLM][0m Added 19 chars, total: 1091
+[96m[LLM][0m Generating insights...
+[96m[LLM][0m Added 10 chars, total: 1102
+[96m[LLM][0m Generating insights...
+[96m[LLM][0m Added 11 chars, total: 1114
+[96m[LLM][0m Generating insights...
+[96m[LLM][0m Added 43 chars, total: 1158
+[96m[LLM][0m Generating insights...
+[96m[LLM][0m Added 46 chars, total: 1205
+[96m[LLM][0m Generating insights...
+[96m[LLM][0m Added 13 chars, total: 1219
+[96m[LLM][0m Generating insights...
+[96m[LLM][0m Added 13 chars, total: 1233
+[96m[LLM][0m Generating insights...
+[96m[LLM][0m Added 25 chars, total: 1259
+[96m[LLM][0m Generating insights...
+[96m[LLM][0m Added 15 chars, total: 1275
+[96m[LLM][0m Generating insights...
+[96m[LLM][0m Added 48 chars, total: 1324
+[96m[LLM][0m Generating insights...
+[92m[LLM][0m Sent insights: 5 summaries, 3 live summaries, 0 actions, 3 questions
+[96m[LLM][0m Added 15 chars, total: 1340
+[96m[LLM][0m Added 27 chars, total: 1368
+[96m[LLM][0m Added 19 chars, total: 1388
+[92m[LLM][0m Sent insights: 5 summaries, 2 live summaries, 2 actions, 3 questions
+[92m[LLM][0m Sent insights: 3 summaries, 1 live summaries, 0 actions, 2 questions
+[96m[LLM][0m Added 20 chars, total: 1409
+[96m[LLM][0m Added 17 chars, total: 1427
+[92m[LLM][0m Sent insights: 5 summaries, 2 live summaries, 2 actions, 2 questions
+[92m[LLM][0m Sent insights: 5 summaries, 3 live summaries, 0 actions, 3 questions
+[96m[LLM][0m Added 19 chars, total: 1447
+[92m[LLM][0m Sent insights: 3 summaries, 2 live summaries, 0 actions, 2 questions
+[92m[LLM][0m Sent insights: 5 summaries, 2 live summaries, 0 actions, 2 questions
+[92m[LLM][0m Sent insights: 4 summaries, 2 live summaries, 0 actions, 2 questions
+[92m[LLM][0m Sent insights: 4 summaries, 2 live summaries, 0 actions, 2 questions
+[92m[LLM][0m Sent insights: 5 summaries, 3 live summaries, 0 actions, 3 questions
+[96m[LLM][0m Added 61 chars, total: 1509
+[92m[LLM][0m Sent insights: 3 summaries, 2 live summaries, 0 actions, 3 questions
+[96m[LLM][0m Added 24 chars, total: 1534
+[96m[LLM][0m Added 12 chars, total: 1547
+[92m[LLM][0m Sent insights: 4 summaries, 2 live summaries, 0 actions, 3 questions
+[96m[LLM][0m Added 16 chars, total: 1564
+[96m[LLM][0m Added 8 chars, total: 1573
+[92m[LLM][0m Sent insights: 3 summaries, 2 live summaries, 0 actions, 3 questions
+[96m[LLM][0m Added 31 chars, total: 1605
+[92m[LLM][0m Sent insights: 5 summaries, 2 live summaries, 0 actions, 2 questions
+[96m[LLM][0m Added 35 chars, total: 1641
+[96m[Mongo][0m Cleanup: {'deleted_by_age': 0, 'deleted_by_size': 0, 'size_before': 1575845, 'size_after': 1575845}
+[96m[LLM][0m Added 24 chars, total: 1666
+[96m[LLM][0m Added 21 chars, total: 1688
+[96m[LLM][0m Added 6 chars, total: 1695
+[96m[LLM][0m Added 39 chars, total: 1735
+[96m[LLM][0m Added 17 chars, total: 1753
+[96m[LLM][0m Added 20 chars, total: 1774
+[96m[LLM][0m Added 17 chars, total: 1792
+[96m[LLM][0m Added 35 chars, total: 1828
+[96m[LLM][0m Added 14 chars, total: 1843
+[96m[LLM][0m Added 17 chars, total: 1861
+[96m[LLM][0m Added 48 chars, total: 1910
+[96m[LLM][0m Added 11 chars, total: 1922
+[96m[LLM][0m Added 28 chars, total: 1951
+[96m[LLM][0m Added 30 chars, total: 1982
+[96m[LLM][0m Added 11 chars, total: 1994
+[96m[LLM][0m Added 11 chars, total: 2006
+[96m[LLM][0m Added 31 chars, total: 2038
+[96m[LLM][0m Added 51 chars, total: 2090
+[96m[LLM][0m Added 19 chars, total: 2110
+[96m[LLM][0m Added 37 chars, total: 2148
+[96m[LLM][0m Added 34 chars, total: 2183
+[96m[LLM][0m Added 20 chars, total: 2204
+[96m[LLM][0m Added 33 chars, total: 2238
+[96m[LLM][0m Added 78 chars, total: 2317
+[96m[LLM][0m Added 27 chars, total: 2345
+[96m[LLM][0m Added 13 chars, total: 2359
+[96m[LLM][0m Added 48 chars, total: 2408
+[96m[LLM][0m Added 34 chars, total: 2443
+[96m[LLM][0m Added 56 chars, total: 2500
+[96m[LLM][0m Added 51 chars, total: 2552
+[96m[LLM][0m Added 40 chars, total: 2593
+[96m[LLM][0m Added 74 chars, total: 2668
+[96m[LLM][0m Generating insights...
+[96m[LLM][0m Added 15 chars, total: 2684
+[96m[LLM][0m Generating insights...
+[96m[LLM][0m Added 6 chars, total: 2691
+[96m[LLM][0m Generating insights...
+[96m[LLM][0m Added 96 chars, total: 2788
+[96m[LLM][0m Generating insights...
+[96m[LLM][0m Added 18 chars, total: 2807
+[96m[LLM][0m Generating insights...
+[96m[LLM][0m Added 11 chars, total: 2819
+[96m[LLM][0m Generating insights...
