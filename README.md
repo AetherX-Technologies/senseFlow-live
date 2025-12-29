@@ -6,15 +6,15 @@ This README focuses only on the live prototype under `prototype/`. Other folders
 
 
 
-![image-20251225181814339](README.assets/image-20251225181814339.png)
+![image-20251226144112710](README.assets/image-20251226144112710.png)
 
 
 
-![image-20251225181852295](E:\code\FunASR-main\FunASR-main\senseFlow-live\README.assets\image-20251225181852295.png)
+![image-20251226144232534](README.assets/image-20251226144232534.png)
 
 
 
-![image-20251225181923447](README.assets\image-20251225181923447.png)
+![image-20251226144305923](README.assets/image-20251226144305923.png)
 
 
 
@@ -75,6 +75,7 @@ History
 Realtime transcript
 - Draft text is low-contrast (partial)
 - Final text is full-contrast
+- Source tags show where audio came from: [MIC] or [SYS] (dual-channel mode)
 - Bottom bar shows the current listening draft
 
 Insights
@@ -89,10 +90,14 @@ Q&A
 
 ## Settings
 Audio input
+- Audio source: mic, system, or both
 - Microphone selection (from server device list)
+- System output device (loopback capture)
+- Dual-channel mode (source=both): mic and system run in separate ASR engines and are tagged [MIC]/[SYS]
 - Input gain
 - Noise gate
 - VAD sensitivity
+- Advanced AEC (NLMS) toggle with order/mu/eps (applies only to dual-channel mode)
 
 Transcription
 - Punctuation toggle (server-side)
@@ -127,6 +132,7 @@ Storage
 - No summaries/Q&A: enable LLM in Settings and verify LLM endpoint in `prototype/ws_server.py`
 - History empty: Mongo disabled or not running
 - WebSocket errors: ensure `ws://127.0.0.1:8766` is reachable
+- UI changes not visible: hard refresh the page to bypass cached `app_live.js`
 
 ## License
 See `LICENSE`.

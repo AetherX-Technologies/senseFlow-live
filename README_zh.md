@@ -6,15 +6,17 @@ SenseFlow Live 是基于 FunASR 的本地实时语音助手，提供实时转写
 
 
 
-![image-20251225181814339](README_zh.assets/image-20251225181814339.png)
+![image-20251226144112710](README_zh.assets/image-20251226144112710.png)
 
 
 
-![image-20251225181852295](README_zh.assets/image-20251225181852295.png)
+![image-20251226144232534](README_zh.assets/image-20251226144232534.png)
 
 
 
-![image-20251225181923447](README_zh.assets/image-20251225181923447-17666580595464.png)
+![image-20251226144305923](README_zh.assets/image-20251226144305923.png)
+
+
 
 ## 运行要求
 - Windows 10/11
@@ -73,6 +75,7 @@ E:\conda_envs\envs\funasr\python.exe prototype\ws_server.py
 实时转写
 - Draft 为低对比度文本（partial）
 - Final 为最终文本
+- 来源标签用于区分音源：[MIC] / [SYS]（双通道模式）
 - 底部栏显示当前监听的草稿文本
 
 智能整理
@@ -87,10 +90,14 @@ E:\conda_envs\envs\funasr\python.exe prototype\ws_server.py
 
 ## 设置说明
 音频输入
+- 输入源（仅麦克风 / 仅系统声音 / 同时混合）
 - 麦克风选择
+- 系统声音设备（回环采集）
+- 双通道模式（选择“同时混合”）：麦克风与系统各自转写，并标记 [MIC]/[SYS]
 - 输入增益
 - 噪声门
 - VAD 灵敏度
+- 高级 AEC（NLMS）开关与参数（仅双通道模式生效）
 
 转写策略
 - 标点开关（服务端生效）
@@ -124,6 +131,7 @@ E:\conda_envs\envs\funasr\python.exe prototype\ws_server.py
 - 没有摘要/问答：确保 LLM 开启且 `prototype/ws_server.py` 的 LLM 配置可用
 - 历史为空：Mongo 未开启或未运行
 - WebSocket 失败：确认 `ws://127.0.0.1:8766` 可访问
+- 页面更新不生效：强制刷新页面以绕过缓存的 `app_live.js`
 
 ## 许可协议
 查看 `LICENSE`。

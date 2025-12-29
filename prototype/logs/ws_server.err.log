@@ -1,9 +1,16 @@
-E:\code\FunASR-main\FunASR-main\prototype\ws_server.py:33: DeprecationWarning: websockets.server.serve is deprecated
+E:\code\FunASR-main\FunASR-main\prototype\ws_server.py:39: DeprecationWarning: websockets.server.serve is deprecated
   from websockets.server import serve
+E:\code\FunASR-main\FunASR-main\prototype\ws_server.py:644: DeprecationWarning: websockets.WebSocketServerProtocol is deprecated
+  websocket: Optional[websockets.WebSocketServerProtocol] = None,
+E:\code\FunASR-main\FunASR-main\prototype\ws_server.py:708: DeprecationWarning: websockets.WebSocketServerProtocol is deprecated
+  async def _send_history_session(self, websocket: websockets.WebSocketServerProtocol, session_id: str):
+E:\code\FunASR-main\FunASR-main\prototype\ws_server.py:1569: DeprecationWarning: websockets.WebSocketServerProtocol is deprecated
+  async def handler(self, websocket: websockets.WebSocketServerProtocol):
 WARNING:root:trust_remote_code: False
 WARNING:root:trust_remote_code: False
 WARNING:root:trust_remote_code: False
 WARNING:root:trust_remote_code: False
-[90mAudio: input overflow[0m
-[90mAudio: input overflow[0m
-[90mAudio: input overflow[0m
+WARNING:root:trust_remote_code: False
+WARNING:root:trust_remote_code: False
+WARNING:root:trust_remote_code: False
+WARNING:root:trust_remote_code: False

@@ -19,7 +19,15 @@ import numpy as np
 import uuid
 import time
 
-from funasr import AutoModel
+AutoModel = None
+
+
+def _get_automodel():
+    global AutoModel
+    if AutoModel is None:
+        from funasr import AutoModel as _AutoModel
+        AutoModel = _AutoModel
+    return AutoModel
 
 from .events import EventEmitter, EventType, ASREvent
 from .vad import VADProcessor, VADConfig, SpeechSegment
@@ -45,6 +53,7 @@ class ASRConfig:
     use_vad: bool = True
     pre_speech_ms: int = 400
     vad_end_padding_ms: int = 800
+    max_segment_ms: Optional[int] = None
 
     # Final re-decode settings (scheme C)
     final_decode_enabled: bool = True
@@ -161,10 +170,11 @@ class ASREngine:
         """Load models and initialize engine"""
         try:
             model_base = self.config.model_base
+            automodel = _get_automodel()
 
             # Load ASR model
             print("[ASREngine] Loading ASR model...")
-            self._asr_model = AutoModel(
+            self._asr_model = automodel(
                 model=f"{model_base}/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online",
                 device=self.config.device,
                 disable_update=True,
@@ -174,7 +184,7 @@ class ASREngine:
                 try:
                     final_model = self._resolve_final_model(model_base)
                     print("[ASREngine] Loading Final ASR model...")
-                    self._final_asr_model = AutoModel(
+                    self._final_asr_model = automodel(
                         model=final_model,
                         device=final_device,
                         disable_update=True,
@@ -189,7 +199,7 @@ class ASREngine:
             # Load VAD model
             if self.config.use_vad:
                 print("[ASREngine] Loading VAD model...")
-                self._vad_model = AutoModel(
+                self._vad_model = automodel(
                     model=f"{model_base}/speech_fsmn_vad_zh-cn-16k-common-pytorch",
                     device=self.config.device,
                     disable_update=True,
@@ -203,7 +213,7 @@ class ASREngine:
             # Load Punctuation model
             if self.config.use_punc:
                 print("[ASREngine] Loading Punctuation model...")
-                self._punc_model = AutoModel(
+                self._punc_model = automodel(
                     model=f"{model_base}/punc_ct-transformer_zh-cn-common-vocab272727-pytorch",
                     device=self.config.device,
                     disable_update=True,
@@ -313,6 +323,13 @@ class ASREngine:
                 self._silence_samples += vad_stride
                 if self._silence_samples >= self.config.vad_end_padding_samples:
                     self._end_segment(completed_segment)
+                    self._silence_samples = 0
+
+            # Force a segment boundary when speech runs too long (optional)
+            if self._current_segment_id and self.config.max_segment_ms:
+                max_samples = int(self.config.max_segment_ms * self.config.sample_rate / 1000)
+                if max_samples > 0 and self._segment_audio.shape[0] >= max_samples:
+                    self._end_segment()
                     self._silence_samples = 0
 
     def _process_without_vad(self, audio_chunk: np.ndarray):

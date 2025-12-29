@@ -322,6 +322,10 @@ body {
     gap: 12px;
 }
 
+.setting-item.disabled {
+    opacity: 0.6;
+}
+
 .setting-label {
     font-size: 0.9rem;
     color: var(--text-primary);
@@ -349,6 +353,28 @@ body {
 .setting-control select option {
     background: #12131c;
     color: var(--text-primary);
+}
+
+.source-tag {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin-right: 6px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    letter-spacing: 0.3px;
+}
+.source-mic {
+    color: #7bd8ff;
+    background: rgba(123, 216, 255, 0.12);
+}
+.source-system {
+    color: #ffc978;
+    background: rgba(255, 201, 120, 0.12);
+}
+.source-both {
+    color: #c896ff;
+    background: rgba(200, 150, 255, 0.12);
 }
 
 .setting-control input[type="number"] {

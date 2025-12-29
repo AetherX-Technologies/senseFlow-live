@@ -28,12 +28,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const settingsCloseBtn = document.getElementById('settings-close-btn');
     const settingsStatus = document.getElementById('settings-status');
     const settingMicSelect = document.getElementById('setting-mic');
+    const settingAudioSource = document.getElementById('setting-audio-source');
+    const settingSystemOutput = document.getElementById('setting-system-output');
+    const settingNlmsToggle = document.getElementById('setting-nlms-toggle');
+    const settingNlmsOrder = document.getElementById('setting-nlms-order');
+    const settingNlmsMu = document.getElementById('setting-nlms-mu');
+    const settingNlmsEps = document.getElementById('setting-nlms-eps');
     const settingGain = document.getElementById('setting-gain');
     const settingGainValue = document.getElementById('setting-gain-value');
     const settingNoiseGate = document.getElementById('setting-noise-gate');
     const settingNoiseGateValue = document.getElementById('setting-noise-gate-value');
     const settingVadSens = document.getElementById('setting-vad-sens');
     const settingVadSensValue = document.getElementById('setting-vad-sens-value');
+    const settingSysMaxSegment = document.getElementById('setting-sys-max-segment');
     const settingPunctuation = document.getElementById('setting-punctuation');
     const settingMergeStrategy = document.getElementById('setting-merge-strategy');
     const settingModelMode = document.getElementById('setting-model-mode');
@@ -50,12 +57,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const settingAutoCleanup = document.getElementById('setting-auto-cleanup');
 
     // Config
-    const WS_URL = 'ws://127.0.0.1:8766';
     const HISTORY_LIMIT = 50;
+    const WS_URL_FALLBACKS = ['ws://127.0.0.1:8766', 'ws://localhost:8766'];
+    const wsCandidates = buildWsCandidates();
+    let wsCandidateIndex = 0;
+    let currentWsUrl = wsCandidates[0];
 
     // State
     let ws = null;
-    let sessionStartTime = Date.now();
     const sessions = new Map();
     const historyMeta = new Map();
     let historyOrder = [];
@@ -66,7 +75,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let pendingQAForSessionId = null;
     let pendingNewSession = false;
     let serverMics = [];
+    let serverOutputs = [];
     let audioPaused = false;
+    let engineReady = false;
+    let engineError = '';
     let autoScrollSuspendUntil = 0;
     let autoScrollTimer = null;
     let autoScrollInProgress = false;
@@ -74,10 +86,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const SETTINGS_KEY = 'senseflow.settings';
     const defaultSettings = {
         audio: {
+            source: 'mic',
             micId: '',
+            systemDevice: '',
             gain: 1.0,
             noiseGate: 0.0,
             vadSensitivity: 0.5,
+            sysMaxSegmentMs: 15000,
+            nlms: {
+                enabled: false,
+                order: 512,
+                mu: 0.3,
+                eps: 0.001,
+            },
         },
         transcription: {
             punctuation: true,
@@ -121,7 +142,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateTimer() {
-        const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
+        const session = getActiveSession();
+        const elapsed = Math.floor(getSessionRecordedMs(session) / 1000);
         const h = Math.floor(elapsed / 3600);
         const m = Math.floor((elapsed % 3600) / 60);
         const s = elapsed % 60;
@@ -217,9 +239,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function showConnectionBanner(show) {
+    function showConnectionBanner(show, message) {
         if (!connectionBanner) return;
         connectionBanner.classList.toggle('show', show);
+        if (message) {
+            connectionBanner.textContent = message;
+        }
     }
 
     function setStatus(status) {
@@ -233,6 +258,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
             case 'connecting':
                 label.textContent = '连接中...';
+                break;
+            case 'loading':
+                label.textContent = '模型加载中';
                 break;
             case 'disconnected':
                 label.textContent = '已断开';
@@ -249,7 +277,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function createTimelineItem(segmentId, timestamp) {
+    function getCurrentSource() {
+        return settings.audio.source || 'mic';
+    }
+
+    function createTimelineItem(segmentId, timestamp, source) {
         const div = document.createElement('div');
         div.className = 'timeline-item';
         div.id = `segment-${segmentId}`;
@@ -261,10 +293,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const contentDiv = document.createElement('div');
         contentDiv.className = 'content';
 
+        const tagSpan = document.createElement('span');
+        tagSpan.className = `source-tag source-${source || 'mic'}`;
+        tagSpan.textContent = source === 'system' ? '[SYS]' : (source === 'both' ? '[MIX]' : '[MIC]');
+
         const textSpan = document.createElement('span');
         textSpan.className = 'text draft';
         textSpan.id = `text-${segmentId}`;
 
+        contentDiv.appendChild(tagSpan);
         contentDiv.appendChild(textSpan);
         div.appendChild(tsDiv);
         div.appendChild(contentDiv);
@@ -272,10 +309,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return div;
     }
 
-    function ensureTimelineItem(segmentId, timestamp) {
+    function ensureTimelineItem(segmentId, timestamp, source) {
         let item = document.getElementById(`segment-${segmentId}`);
         if (!item) {
-            item = createTimelineItem(segmentId, timestamp);
+            item = createTimelineItem(segmentId, timestamp, source || getCurrentSource());
             timelineContainer.appendChild(item);
         }
         return item;
@@ -361,6 +398,7 @@ document.addEventListener('DOMContentLoaded', () => {
         applyDisplaySettings();
         updateQAAvailability();
         setUpdateBadgeDefault();
+        updateAudioSourceUI();
     }
 
     function setRangeDisplay(labelEl, value, formatter) {
@@ -409,6 +447,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (serverMics.length > 0) {
                 updateMicOptions(serverMics, settings.audio.micId);
+                if (serverOutputs.length > 0) {
+                    updateOutputOptions(serverOutputs, settings.audio.systemDevice);
+                }
                 return;
             }
             const devices = await navigator.mediaDevices.enumerateDevices();
@@ -450,6 +491,44 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function updateOutputOptions(devices, selectedId) {
+        if (!settingSystemOutput) return;
+        settingSystemOutput.textContent = '';
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = '系统默认';
+        settingSystemOutput.appendChild(defaultOption);
+        devices.forEach(device => {
+            const option = document.createElement('option');
+            option.value = device.id;
+            option.textContent = device.name || `输出设备 ${device.id}`;
+            settingSystemOutput.appendChild(option);
+        });
+        if (selectedId) {
+            settingSystemOutput.value = selectedId;
+        } else {
+            settingSystemOutput.value = '';
+        }
+    }
+
+    function updateAudioSourceUI() {
+        if (!settingAudioSource || !settingSystemOutput) return;
+        const source = settings.audio.source || 'mic';
+        const needsSystem = source === 'system' || source === 'both';
+        settingSystemOutput.disabled = !needsSystem;
+        settingSystemOutput.closest('.setting-item')?.classList.toggle('disabled', !needsSystem);
+        if (settingSysMaxSegment) {
+            settingSysMaxSegment.disabled = !needsSystem;
+            settingSysMaxSegment.closest('.setting-item')?.classList.toggle('disabled', !needsSystem);
+        }
+        const nlmsDisabled = source !== 'both';
+        [settingNlmsToggle, settingNlmsOrder, settingNlmsMu, settingNlmsEps].forEach(el => {
+            if (!el) return;
+            el.disabled = nlmsDisabled;
+            el.closest('.setting-item')?.classList.toggle('disabled', nlmsDisabled);
+        });
+    }
+
     // ============ Session State ============
     function createSessionState(sessionId) {
         return {
@@ -464,6 +543,9 @@ document.addEventListener('DOMContentLoaded', () => {
             lastUpdateTs: null,
             loaded: false,
             terminated: false,
+            recordedMs: 0,
+            recording: false,
+            recordingAnchorMs: Date.now(),
         };
     }
 
@@ -483,6 +565,25 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!sessionId) return false;
         const meta = historyMeta.get(sessionId);
         return Boolean(meta && meta.terminated);
+    }
+
+    function setSessionRecording(sessionId, recordedMs, recording) {
+        const session = ensureSession(sessionId);
+        if (!session) return;
+        session.recordedMs = Math.max(0, Number(recordedMs || 0));
+        session.recording = Boolean(recording);
+        session.recordingAnchorMs = Date.now();
+    }
+
+    function getSessionRecordedMs(session) {
+        if (!session) return 0;
+        const base = Number(session.recordedMs || 0);
+        const isLive = session.sessionId && session.sessionId === liveSessionId;
+        const pausedByState = isLive && (audioPaused || session.terminated);
+        if (!session.recording || pausedByState) {
+            return base;
+        }
+        return base + Math.max(0, Date.now() - Number(session.recordingAnchorMs || Date.now()));
     }
 
     function markSessionActivity(sessionId, tsSeconds) {
@@ -507,9 +608,6 @@ document.addEventListener('DOMContentLoaded', () => {
         renderHistoryList();
         updateQAAvailability();
         applyActiveSessionTermination();
-        if (options.resetTimer) {
-            sessionStartTime = Date.now();
-        }
     }
 
     function touchHistorySession(sessionId, overrides = {}) {
@@ -690,10 +788,69 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function bindSettingsControls() {
+        if (settingAudioSource) {
+            settingAudioSource.value = settings.audio.source || 'mic';
+            settingAudioSource.addEventListener('change', () => {
+                settings.audio.source = settingAudioSource.value || 'mic';
+                saveSettings();
+                updateAudioSourceUI();
+                queueSettingsUpdate();
+            });
+        }
+
+        if (settingNlmsToggle) {
+            settingNlmsToggle.checked = settings.audio.nlms?.enabled || false;
+            settingNlmsToggle.addEventListener('change', () => {
+                settings.audio.nlms = settings.audio.nlms || {};
+                settings.audio.nlms.enabled = settingNlmsToggle.checked;
+                saveSettings();
+                queueSettingsUpdate();
+            });
+        }
+
+        if (settingNlmsOrder) {
+            settingNlmsOrder.value = settings.audio.nlms?.order ?? 512;
+            settingNlmsOrder.addEventListener('input', () => {
+                settings.audio.nlms = settings.audio.nlms || {};
+                settings.audio.nlms.order = Math.max(64, Number(settingNlmsOrder.value) || 512);
+                saveSettings();
+                queueSettingsUpdate();
+            });
+        }
+
+        if (settingNlmsMu) {
+            settingNlmsMu.value = settings.audio.nlms?.mu ?? 0.3;
+            settingNlmsMu.addEventListener('input', () => {
+                settings.audio.nlms = settings.audio.nlms || {};
+                settings.audio.nlms.mu = Math.max(0.01, Number(settingNlmsMu.value) || 0.3);
+                saveSettings();
+                queueSettingsUpdate();
+            });
+        }
+
+        if (settingNlmsEps) {
+            settingNlmsEps.value = settings.audio.nlms?.eps ?? 0.001;
+            settingNlmsEps.addEventListener('input', () => {
+                settings.audio.nlms = settings.audio.nlms || {};
+                settings.audio.nlms.eps = Math.max(1e-6, Number(settingNlmsEps.value) || 0.001);
+                saveSettings();
+                queueSettingsUpdate();
+            });
+        }
+
         if (settingMicSelect) {
             settingMicSelect.value = settings.audio.micId || '';
             settingMicSelect.addEventListener('change', () => {
                 settings.audio.micId = settingMicSelect.value;
+                saveSettings();
+                queueSettingsUpdate();
+            });
+        }
+
+        if (settingSystemOutput) {
+            settingSystemOutput.value = settings.audio.systemDevice || '';
+            settingSystemOutput.addEventListener('change', () => {
+                settings.audio.systemDevice = settingSystemOutput.value;
                 saveSettings();
                 queueSettingsUpdate();
             });
@@ -727,6 +884,17 @@ document.addEventListener('DOMContentLoaded', () => {
             settingVadSens.addEventListener('input', () => {
                 settings.audio.vadSensitivity = Number(settingVadSens.value);
                 setRangeDisplay(settingVadSensValue, settings.audio.vadSensitivity, value => Number(value).toFixed(2));
+                saveSettings();
+                queueSettingsUpdate();
+            });
+        }
+
+        if (settingSysMaxSegment) {
+            const ms = settings.audio.sysMaxSegmentMs ?? 15000;
+            settingSysMaxSegment.value = Math.max(0, Math.round(Number(ms) / 1000));
+            settingSysMaxSegment.addEventListener('input', () => {
+                const seconds = Math.max(0, Number(settingSysMaxSegment.value) || 0);
+                settings.audio.sysMaxSegmentMs = Math.round(seconds * 1000);
                 saveSettings();
                 queueSettingsUpdate();
             });
@@ -1300,13 +1468,21 @@ document.addEventListener('DOMContentLoaded', () => {
         showConnectionBanner(false);
         setSettingsStatus('未连接', 'error');
 
-        ws = new WebSocket(WS_URL);
+        currentWsUrl = wsCandidates[wsCandidateIndex] || wsCandidates[0];
+        ws = new WebSocket(currentWsUrl);
 
         ws.onopen = () => {
             console.log('[WS] Connected');
-            setStatus('recording');
-            draftPreview.textContent = '正在聆听...';
-            sessionStartTime = Date.now();
+            if (engineError) {
+                setStatus('disconnected');
+                draftPreview.textContent = '模型加载失败';
+            } else if (!engineReady) {
+                setStatus('loading');
+                draftPreview.textContent = '模型加载中...';
+            } else {
+                setStatus('recording');
+                draftPreview.textContent = '正在聆听...';
+            }
             showConnectionBanner(false);
             setSettingsStatus('已连接', 'ok');
             sendSettingsUpdate();
@@ -1317,14 +1493,18 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('[WS] Disconnected');
             setStatus('disconnected');
             draftPreview.textContent = '连接已断开，3秒后重连...';
-            showConnectionBanner(true);
+            const nextUrl = rotateWsCandidate();
+            const hint = nextUrl ? `无法连接 ASR 服务器，正在尝试 ${nextUrl}` : '无法连接 ASR 服务器，请确认 ws_server.py 正在运行。';
+            showConnectionBanner(true, hint);
             setSettingsStatus('未连接', 'error');
             setTimeout(connect, 3000);
         };
 
         ws.onerror = (err) => {
             console.error('[WS] Error:', err);
-            showConnectionBanner(true);
+            const nextUrl = rotateWsCandidate();
+            const hint = nextUrl ? `无法连接 ASR 服务器，正在尝试 ${nextUrl}` : '无法连接 ASR 服务器，请确认 ws_server.py 正在运行。';
+            showConnectionBanner(true, hint);
         };
 
         ws.onmessage = (event) => {
@@ -1339,13 +1519,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ============ Event Handlers ============
     function handleEvent(event) {
-        const { type, payload, segment_id, ts, session_id } = event;
+        const { type, payload, segment_id, ts, session_id, source } = event;
+        const evSource = source || payload?.source || null;
 
         switch (type) {
             case 'connection.established':
                 liveSessionId = payload.session_id;
                 ensureSession(liveSessionId);
                 touchHistorySession(liveSessionId, { source: 'live' });
+                engineReady = Boolean(payload.engine_ready);
+                engineError = payload.engine_error || '';
+                if (payload && payload.recorded_ms !== undefined) {
+                    setSessionRecording(liveSessionId, payload.recorded_ms, payload.recording);
+                }
                 if (!activeSessionId) {
                     setActiveSession(liveSessionId, { resetTimer: true });
                 }
@@ -1355,7 +1541,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
 
             case 'engine.ready':
+                engineReady = true;
+                engineError = '';
                 console.log('[ASR] Engine ready', payload);
+                if (!audioPaused) {
+                    setStatus('listening');
+                    draftPreview.textContent = '正在聆听...';
+                }
                 break;
 
             case 'session.changed':
@@ -1391,7 +1583,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
 
             case 'vad.speech.start':
-                handleSpeechStart(session_id, segment_id, ts);
+                handleSpeechStart(session_id, segment_id, ts, evSource);
                 break;
 
             case 'vad.speech.end':
@@ -1399,11 +1591,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
 
             case 'asr.partial':
-                handlePartial(session_id, segment_id, payload, ts);
+                handlePartial(session_id, segment_id, payload, ts, evSource);
                 break;
 
             case 'asr.final':
-                handleFinal(session_id, segment_id, payload, ts);
+                handleFinal(session_id, segment_id, payload, ts, evSource);
                 break;
 
             case 'insights.update':
@@ -1415,8 +1607,66 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
 
             case 'engine.error':
-                console.error('[ASR] Error:', payload.error);
+                engineError = payload.error || 'Engine error';
+                console.error('[ASR] Error:', engineError);
+                setStatus('disconnected');
+                draftPreview.textContent = '模型加载失败';
                 break;
+
+            case 'engine.status':
+                handleEngineStatus(payload);
+                break;
+        }
+    }
+
+    function buildWsCandidates() {
+        const params = new URLSearchParams(window.location.search || '');
+        const fromQuery = params.get('ws');
+        const candidates = [];
+        if (fromQuery) {
+            const trimmed = String(fromQuery).trim();
+            if (trimmed) {
+                const hasScheme = /^wss?:\/\//i.test(trimmed);
+                candidates.push(hasScheme ? trimmed : `ws://${trimmed}`);
+            }
+        }
+        WS_URL_FALLBACKS.forEach((item) => {
+            if (!candidates.includes(item)) {
+                candidates.push(item);
+            }
+        });
+        return candidates.length > 0 ? candidates : WS_URL_FALLBACKS.slice();
+    }
+
+    function rotateWsCandidate() {
+        if (wsCandidates.length <= 1) {
+            return null;
+        }
+        wsCandidateIndex = (wsCandidateIndex + 1) % wsCandidates.length;
+        return wsCandidates[wsCandidateIndex];
+    }
+
+    function handleEngineStatus(payload) {
+        const ready = Boolean(payload && payload.ready);
+        const error = payload && payload.error ? String(payload.error) : '';
+        engineReady = ready;
+        engineError = error;
+        if (engineError) {
+            setStatus('disconnected');
+            draftPreview.textContent = '模型加载失败';
+            return;
+        }
+        if (!engineReady) {
+            setStatus('loading');
+            draftPreview.textContent = '模型加载中...';
+            return;
+        }
+        if (audioPaused) {
+            setStatus('paused');
+            draftPreview.textContent = '录音已暂停';
+        } else {
+            setStatus('listening');
+            draftPreview.textContent = '正在聆听...';
         }
     }
 
@@ -1429,6 +1679,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!activeSessionId || activeSessionId === previousSessionId) {
             setActiveSession(newSessionId, { resetTimer: true });
+        }
+        if (payload && payload.recorded_ms !== undefined) {
+            setSessionRecording(newSessionId, payload.recorded_ms, payload.recording);
+        } else {
+            setSessionRecording(newSessionId, 0, true);
         }
         pendingNewSession = false;
         requestHistoryList();
@@ -1462,6 +1717,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const session = ensureSession(sessionId);
         if (session) {
             session.terminated = true;
+            if (payload && payload.recorded_ms !== undefined) {
+                setSessionRecording(sessionId, payload.recorded_ms, false);
+            } else {
+                session.recording = false;
+            }
         }
         renderHistoryList();
         if (sessionId === activeSessionId) {
@@ -1487,11 +1747,24 @@ document.addEventListener('DOMContentLoaded', () => {
             if (item.session_id === payload.live_session_id && !merged.terminated) {
                 merged.sort_ts = Math.max(Number(merged.sort_ts || 0), Date.now() / 1000);
             }
+            if (item.recorded_ms !== undefined) {
+                merged.recorded_ms = Number(item.recorded_ms || 0);
+            }
+            if (item.recording !== undefined) {
+                merged.recording = Boolean(item.recording);
+            }
             historyMeta.set(item.session_id, merged);
             historyOrder.push(item.session_id);
             const session = ensureSession(item.session_id);
             if (session) {
                 session.terminated = Boolean(merged.terminated);
+                if (merged.recorded_ms !== undefined) {
+                    const isLiveFromPayload = item.session_id === payload.live_session_id;
+                    const shouldRecord = merged.recording !== undefined
+                        ? merged.recording
+                        : (isLiveFromPayload && !audioPaused && !merged.terminated);
+                    setSessionRecording(item.session_id, merged.recorded_ms, shouldRecord);
+                }
             }
         });
 
@@ -1553,10 +1826,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             historyMeta.set(sessionId, meta);
         }
+        if (payload.recorded_ms !== undefined) {
+            const recording = payload.recording !== undefined ? payload.recording : false;
+            setSessionRecording(sessionId, payload.recorded_ms, recording);
+        }
         if (session.lastInsights.summary.length || session.lastInsights.summary_live.length || session.lastInsights.actions.length || session.lastInsights.questions.length) {
             session.lastUpdateTs = Date.now();
         }
         setSessionSortTs(sessionId, Date.now() / 1000);
+
+        if (payload.recorded_ms !== undefined) {
+            setSessionRecording(sessionId, payload.recorded_ms, false);
+        }
 
         const qa = (payload.qa || []).slice().sort((a, b) => {
             const aTs = a.ts_ms || 0;
@@ -1582,12 +1863,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function handleAudioDevices(payload) {
-        const devices = payload.devices || [];
-        serverMics = devices;
+        const inputs = payload.inputs || payload.devices || [];
+        const outputs = payload.outputs || [];
+        serverMics = inputs;
+        serverOutputs = outputs;
         const selected = payload.selected || settings.audio.micId;
-        updateMicOptions(devices, selected);
+        const selectedOutput = payload.selected_output || settings.audio.systemDevice;
+        updateMicOptions(inputs, selected);
+        updateOutputOptions(outputs, selectedOutput);
+        updateAudioSourceUI();
         if (selected && settings.audio.micId !== selected) {
             settings.audio.micId = selected;
+            saveSettings();
+        }
+        if (selectedOutput && settings.audio.systemDevice !== selectedOutput) {
+            settings.audio.systemDevice = selectedOutput;
             saveSettings();
         }
     }
@@ -1596,6 +1886,35 @@ document.addEventListener('DOMContentLoaded', () => {
         const paused = Boolean(payload.paused);
         audioPaused = paused;
         setPauseButtonState(paused);
+        if (engineError) {
+            setStatus('disconnected');
+            draftPreview.textContent = '模型加载失败';
+            return;
+        }
+        if (!engineReady) {
+            setStatus('loading');
+            draftPreview.textContent = '模型加载中...';
+            return;
+        }
+        if (liveSessionId) {
+            if (payload && payload.recorded_ms !== undefined) {
+                setSessionRecording(liveSessionId, payload.recorded_ms, payload.recording);
+            } else {
+                const session = ensureSession(liveSessionId);
+                if (session) {
+                    const now = Date.now();
+                    if (paused && session.recording) {
+                        session.recordedMs = getSessionRecordedMs(session);
+                        session.recording = false;
+                        session.recordingAnchorMs = now;
+                    }
+                    if (!paused && !session.recording) {
+                        session.recording = true;
+                        session.recordingAnchorMs = now;
+                    }
+                }
+            }
+        }
         if (liveSessionId && isSessionTerminated(liveSessionId) && activeSessionId === liveSessionId) {
             setStatus('terminated');
             draftPreview.textContent = '会话已终止';
@@ -1629,7 +1948,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function handleSpeechStart(sessionId, segmentId, ts) {
+    function handleSpeechStart(sessionId, segmentId, ts, source) {
         if (!sessionId || !segmentId) return;
         const session = ensureSession(sessionId);
         if (!session) return;
@@ -1644,11 +1963,6 @@ document.addEventListener('DOMContentLoaded', () => {
             setStatus('recording');
         }
 
-        if (sessionId === activeSessionId) {
-            ensureTimelineItem(segmentId, ts);
-            scrollToBottom();
-        }
-
         console.log(`[VAD] Speech started: ${segmentId}`);
     }
 
@@ -1661,7 +1975,7 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log(`[VAD] Speech ended: ${segmentId}`);
     }
 
-    function handlePartial(sessionId, segmentId, payload, ts) {
+    function handlePartial(sessionId, segmentId, payload, ts, source) {
         if (!sessionId) return;
         const session = ensureSession(sessionId);
         if (!session) return;
@@ -1692,7 +2006,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (sessionId === activeSessionId) {
-            ensureTimelineItem(segmentId, ts);
+            ensureTimelineItem(segmentId, ts, source || getCurrentSource());
             const textSpan = document.getElementById(`text-${segmentId}`);
             if (textSpan) {
                 textSpan.textContent = text;
@@ -1703,7 +2017,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function handleFinal(sessionId, segmentId, payload, ts) {
+    function handleFinal(sessionId, segmentId, payload, ts, source) {
         if (!sessionId || !segmentId) return;
         const session = ensureSession(sessionId);
         if (!session) return;
@@ -1733,7 +2047,7 @@ document.addEventListener('DOMContentLoaded', () => {
         markSessionActivity(sessionId, ts);
 
         if (sessionId === activeSessionId) {
-            ensureTimelineItem(segmentId, ts);
+            ensureTimelineItem(segmentId, ts, source || getCurrentSource());
             const textSpan = document.getElementById(`text-${segmentId}`);
             if (textSpan) {
                 textSpan.textContent = text;
